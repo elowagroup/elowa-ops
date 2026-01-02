@@ -2,18 +2,39 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { DepotDayEvent, InventoryStatus } from './types';
-import { generateMockEvents } from './mockData';
 import { EventBadge } from './components/StatusBadge';
+import { createClient } from '../lib/supabase';
 
 /**
  * ELOWA Operational Command Center
  * Refined for high-density information management and aesthetic precision.
  */
 
+// Helper function to convert Supabase data to our DepotDayEvent format
+function convertSupabaseData(supabaseData: any[]): DepotDayEvent[] {
+  return supabaseData.map(row => ({
+    depot_id: row.depot_id,
+    business_date: row.business_date,
+    opening_cash_cfa: row.opening_cash_cfa || 0,
+    closing_cash_physical: row.closing_cash_cfa || 0,
+    cash_sales_cfa: row.cash_sales_total_cfa || 0,
+    mobile_sales_cfa: row.mobile_sales_total_cfa || 0,
+    restock_cash_used: 0, // Not in current schema, defaulting to 0
+    restock_skus: [],
+    operator_open: row.operator_open,
+    operator_close: row.operator_close,
+    variance_note: row.cash_variance_cfa ? `Variance: ${row.cash_variance_cfa} CFA` : undefined,
+    opening_inventory: [], // Populate with actual inventory data if available
+    closing_inventory: [] // Populate with actual inventory data if available
+  }));
+}
+
 export default function AdminPage() {
   const [data, setData] = useState<DepotDayEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<DepotDayEvent | null>(null);
+  const supabase = createClient();
   
   // -- Grouped UI State --
   const [dashboardConfig, setDashboardConfig] = useState({
@@ -39,15 +60,33 @@ export default function AdminPage() {
   });
 
   useEffect(() => {
-    const init = async () => {
+    const loadData = async () => {
       setLoading(true);
-      // Simulate network latency for command-center feel
-      await new Promise(r => setTimeout(r, 800));
-      setData(generateMockEvents());
-      setLoading(false);
+      setError(null);
+
+      try {
+        const { data: supabaseData, error: supabaseError } = await supabase
+          .from("depot_day_state")
+          .select("*")
+          .order("business_date", { ascending: false });
+
+        if (supabaseError) {
+          setError(supabaseError.message);
+          console.error('Supabase error:', supabaseError);
+        } else {
+          const convertedData = convertSupabaseData(supabaseData || []);
+          setData(convertedData);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
+        console.error('Error loading data:', err);
+      } finally {
+        setLoading(false);
+      }
     };
-    init();
-  }, []);
+
+    loadData();
+  }, [supabase]);
 
   // -- Business Logic & Analytics --
 
@@ -177,6 +216,28 @@ export default function AdminPage() {
       <div className="flex flex-col items-center gap-6">
         <div className="w-12 h-12 border-[4px] border-slate-100 border-t-blue-600 rounded-full animate-spin"></div>
         <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Syncing Command Vectors</p>
+      </div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="min-h-screen flex items-center justify-center bg-white p-6">
+      <div className="max-w-md w-full bg-rose-50 border-2 border-rose-200 rounded-3xl p-12">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-rose-600 rounded-full mx-auto mb-6 flex items-center justify-center">
+            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-black text-rose-900 mb-3">Connection Error</h2>
+          <p className="text-sm font-bold text-rose-700 mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-rose-600 text-white px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-rose-700 transition-all"
+          >
+            Retry Connection
+          </button>
+        </div>
       </div>
     </div>
   );
