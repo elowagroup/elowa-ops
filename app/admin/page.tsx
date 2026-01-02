@@ -89,28 +89,40 @@ export default function AdminPage() {
 
   // SECTION 3: THIS MONTH metrics
   const thisMonthMetrics = useMemo(() => {
-    if (!data.length) return { totalSales: 0, avgDailySales: 0, activeDays: 0, avgCashVariancePct: 0 };
+    if (!data.length) return { totalSales: 0, avgDailySales: 0, activeDays: 0, cashIssueDays: 0 };
 
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthData = data.filter(d => new Date(d.business_date) >= firstDayOfMonth);
 
-    const totalSales = monthData.reduce((sum, d) => sum + d.cash_sales_cfa + d.mobile_sales_cfa, 0);
-    const uniqueDates = new Set(monthData.map(d => d.business_date));
-    const activeDays = uniqueDates.size;
+    // Active Day = at least one depot CLOSED on that date
+    const closedByDate: Record<string, boolean> = {};
+    monthData.forEach(d => {
+      if (d.operator_close) {
+        closedByDate[d.business_date] = true;
+      }
+    });
+
+    const activeDays = Object.keys(closedByDate).length;
+
+    // Calculate sales only from closed depots
+    const closedDepotData = monthData.filter(d => d.operator_close);
+    const totalSales = closedDepotData.reduce((sum, d) => sum + d.cash_sales_cfa + d.mobile_sales_cfa, 0);
     const avgDailySales = activeDays > 0 ? totalSales / activeDays : 0;
 
-    const varianceData = monthData.filter(d => d.operator_close);
-    const totalVariance = varianceData.reduce((sum, d) => {
+    // Cash Issue Days = days where any depot has variance >5%
+    const daysWithIssues = new Set<string>();
+    closedDepotData.forEach(d => {
       const expected = d.opening_cash_cfa + d.cash_sales_cfa - d.restock_cash_used;
       const variance = d.closing_cash_physical - expected;
-      return sum + Math.abs(variance);
-    }, 0);
-    const totalExpected = varianceData.reduce((sum, d) =>
-      sum + d.opening_cash_cfa + d.cash_sales_cfa - d.restock_cash_used, 0);
-    const avgCashVariancePct = totalExpected > 0 ? (totalVariance / totalExpected) * 100 : 0;
+      const variancePct = expected > 0 ? Math.abs(variance / expected) * 100 : 0;
+      if (variancePct > 5) {
+        daysWithIssues.add(d.business_date);
+      }
+    });
+    const cashIssueDays = daysWithIssues.size;
 
-    return { totalSales, avgDailySales, activeDays, avgCashVariancePct };
+    return { totalSales, avgDailySales, activeDays, cashIssueDays };
   }, [data]);
 
   // SECTION 4: Previous month comparison
@@ -163,7 +175,7 @@ export default function AdminPage() {
 
   // SECTION 6: Daily records table (paginated)
   const allDailyRecords = useMemo(() => {
-    const dailyTotals: Record<string, { date: string; sales: number; variance: number; depotCount: number }> = {};
+    const dailyTotals: Record<string, { date: string; sales: number; variance: number; depotCount: number; closedCount: number; hasAnomalies: boolean }> = {};
 
     data.forEach(d => {
       const sales = d.cash_sales_cfa + d.mobile_sales_cfa;
@@ -171,11 +183,18 @@ export default function AdminPage() {
       const variance = d.operator_close ? d.closing_cash_physical - expected : 0;
 
       if (!dailyTotals[d.business_date]) {
-        dailyTotals[d.business_date] = { date: d.business_date, sales: 0, variance: 0, depotCount: 0 };
+        dailyTotals[d.business_date] = { date: d.business_date, sales: 0, variance: 0, depotCount: 0, closedCount: 0, hasAnomalies: false };
       }
       dailyTotals[d.business_date].sales += sales;
       dailyTotals[d.business_date].variance += variance;
       dailyTotals[d.business_date].depotCount++;
+      if (d.operator_close) {
+        dailyTotals[d.business_date].closedCount++;
+      }
+      // Check for anomalies: zero sales with variance, or variance >10%
+      if ((sales === 0 && Math.abs(variance) > 0) || (expected > 0 && Math.abs(variance / expected) > 0.1)) {
+        dailyTotals[d.business_date].hasAnomalies = true;
+      }
     });
 
     return Object.values(dailyTotals).sort((a, b) => b.date.localeCompare(a.date));
@@ -274,6 +293,9 @@ export default function AdminPage() {
                         <span className={`text-sm font-bold ${variance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                           Δ {variance >= 0 ? '+' : ''}{variance.toLocaleString()}
                         </span>
+                        {depot.variance_note && (sales === 0 || Math.abs(variance) > expected * 0.1) && (
+                          <span className="text-xs text-slate-400 italic">({depot.variance_note})</span>
+                        )}
                       </>
                     ) : (
                       <span className="text-sm text-slate-400">—</span>
@@ -338,9 +360,9 @@ export default function AdminPage() {
                 <p className="text-xs text-slate-400">days</p>
               </div>
               <div>
-                <p className="text-xs text-slate-500 mb-1">Avg Cash Variance %</p>
-                <p className="text-xl font-bold text-slate-900">{thisMonthMetrics.avgCashVariancePct.toFixed(1)}%</p>
-                <p className="text-xs text-slate-400">of expected</p>
+                <p className="text-xs text-slate-500 mb-1">Cash Issue Days</p>
+                <p className="text-xl font-bold text-slate-900">{thisMonthMetrics.cashIssueDays}</p>
+                <p className="text-xs text-slate-400">days</p>
               </div>
             </div>
           </div>
@@ -364,6 +386,7 @@ export default function AdminPage() {
           <h2 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wide">
             30-DAY SALES TREND
           </h2>
+          <p className="text-xs text-slate-500 mb-3">Includes only closed days</p>
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={last30DaysChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -418,16 +441,25 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedRecords.map((record, idx) => (
-                  <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-6 py-3 text-sm text-slate-900">{new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                    <td className="px-6 py-3 text-sm text-right font-bold text-slate-900">{record.sales.toLocaleString()}</td>
-                    <td className={`px-6 py-3 text-sm text-right font-bold ${record.variance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {record.variance >= 0 ? '+' : ''}{record.variance.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-3 text-sm text-right text-slate-600">{record.depotCount}</td>
-                  </tr>
-                ))}
+                {pagedRecords.map((record, idx) => {
+                  const statusLabel = record.closedCount === 0 ? 'No closures' :
+                                     record.closedCount < record.depotCount ? 'Partial' :
+                                     record.hasAnomalies ? 'Anomaly' : null;
+
+                  return (
+                    <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <td className="px-6 py-3 text-sm text-slate-900">
+                        {new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {statusLabel && <span className="ml-2 text-xs text-slate-400 italic">({statusLabel})</span>}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-right font-bold text-slate-900">{record.sales.toLocaleString()}</td>
+                      <td className={`px-6 py-3 text-sm text-right font-bold ${record.variance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {record.variance >= 0 ? '+' : ''}{record.variance.toLocaleString()}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-right text-slate-600">{record.depotCount}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
