@@ -407,7 +407,7 @@ export default function AdminPage() {
                 Cash {summary.cashSales.toLocaleString()} • Mobile {summary.mobileSales.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-100 px-3 py-2">
               <p className="text-xs text-slate-500">Cash review</p>
               <p className={`text-sm font-semibold ${summary.cashReviewTone === 'emerald' ? 'text-emerald-600' : summary.cashReviewTone === 'amber' ? 'text-amber-600' : 'text-slate-400'}`}>
                 {summary.cashReviewLabel}
@@ -960,17 +960,17 @@ export default function AdminPage() {
   }, [currentPage, totalPages]);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
+    <div className="min-h-screen flex items-center justify-center bg-slate-200">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
-        <p className="text-xs font-bold text-slate-400">Loading...</p>
+        <div className="w-10 h-10 border-4 border-slate-400 border-t-slate-900 rounded-full animate-spin"></div>
+        <p className="text-xs font-bold text-slate-600">Loading...</p>
       </div>
     </div>
   );
 
   if (error) return (
-    <div className="min-h-screen flex items-center justify-center bg-white p-6">
-      <div className="max-w-md w-full bg-rose-50 border border-rose-200 rounded-2xl p-8">
+    <div className="min-h-screen flex items-center justify-center bg-slate-200 p-6">
+      <div className="max-w-md w-full bg-rose-50 border border-rose-200 rounded-2xl p-8 shadow-xl">
         <h2 className="text-lg font-bold text-rose-900 mb-2">Connection Error</h2>
         <p className="text-sm text-rose-700 mb-4">{error}</p>
         <button
@@ -984,37 +984,37 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950/15 via-slate-50 to-slate-100 text-slate-900">
+    <div className="min-h-screen bg-slate-200 text-slate-900">
       <div className="max-w-6xl mx-auto px-6 py-10">
         {/* Header */}
-        <div className="mb-10 rounded-2xl border border-slate-200/70 bg-white/80 backdrop-blur px-6 py-5 shadow-sm">
-          <div className="flex flex-col gap-6">
-            <div className="h-1 w-full rounded-full bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900" />
+        <div className="mb-10 rounded-[2.5rem] border border-slate-300 bg-white shadow-2xl overflow-hidden">
+          <div className="bg-slate-900 text-white px-6 py-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-semibold tracking-[0.3em] text-slate-400">ELOWA OPERATIONS</p>
-                <h1 className="text-3xl font-semibold text-slate-900">Executive Dashboard</h1>
-                <p className="text-sm text-slate-500">Cash and mobile totals combined by day</p>
+                <h1 className="text-3xl font-semibold text-white">Executive Dashboard</h1>
+                <p className="text-sm text-slate-400">Cash and mobile totals combined by day</p>
               </div>
               <div className="text-left sm:text-right">
                 <p className="text-xs text-slate-400">Last close</p>
-                <p className="text-sm font-semibold text-slate-900">{lastCompletedDateFormatted || 'No date'}</p>
+                <p className="text-sm font-semibold text-white">{lastCompletedDateFormatted || 'No date'}</p>
               </div>
             </div>
-
+          </div>
+          <div className="bg-white px-6 py-6">
             {headerDepotSummary && (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <div className="rounded-2xl border border-slate-300 bg-slate-100 p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">LAST COMPLETED DAY</p>
-                    <p className="text-sm text-slate-500">{lastCompletedDateFormatted || 'No date available'}</p>
+                    <p className="text-[11px] font-semibold tracking-[0.25em] text-slate-600">LAST COMPLETED DAY</p>
+                    <p className="text-sm text-slate-600">{lastCompletedDateFormatted || 'No date available'}</p>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span className="uppercase tracking-[0.2em] text-slate-400">Depot</span>
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <span className="uppercase tracking-[0.2em] text-slate-500">Depot</span>
                     <select
                       value={selectedLastCloseDepot || headerDepotSummary.depotId}
                       onChange={(event) => setSelectedLastCloseDepot(event.target.value)}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+                      className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
                     >
                       {lastDayDepotSummaries.map(summary => (
                         <option key={summary.depotId} value={summary.depotId}>
@@ -1025,15 +1025,15 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mt-4 rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
                   {renderDepotSummaryContent(headerDepotSummary)}
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
                   <span>Last close total: {lastCloseTotal.toLocaleString()} CFA</span>
                   <button
                     onClick={() => setShowLastCloseSplit(value => !value)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                   >
                     {showLastCloseSplit ? 'Hide depot split' : 'View depot split'}
                   </button>
@@ -1042,7 +1042,7 @@ export default function AdminPage() {
                 {showLastCloseSplit && (
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     {lastDayDepotSummaries.map(summary => (
-                      <div key={summary.depotId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div key={summary.depotId} className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
                         {renderDepotSummaryContent(summary)}
                       </div>
                     ))}
@@ -1064,7 +1064,7 @@ export default function AdminPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <div className="rounded-2xl bg-slate-950 text-white p-6 shadow-sm">
+            <div className="rounded-2xl bg-slate-900 text-white p-6 shadow-sm">
               <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">This week</p>
               <p className="text-3xl font-semibold mt-2">{currentWeekSummary.totalSales.toLocaleString()} CFA</p>
               <p className="text-xs text-slate-400 mt-2">
@@ -1072,7 +1072,7 @@ export default function AdminPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
               <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Last week</p>
               <p className="text-2xl font-semibold text-slate-900 mt-2">{lastFullWeekSummary.totalSales.toLocaleString()} CFA</p>
               <p className="text-xs text-slate-500 mt-2">
@@ -1080,7 +1080,7 @@ export default function AdminPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
               <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">5 day avg</p>
               <p className="text-2xl font-semibold text-slate-900 mt-2">
                 {Math.round(lastFiveDayTrends.avg).toLocaleString()} CFA
@@ -1088,7 +1088,7 @@ export default function AdminPage() {
               <p className="text-xs text-slate-500 mt-2">Based on last 5 closed days</p>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
               <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Best day</p>
               <p className="text-lg font-semibold text-slate-900 mt-2">
                 {lastFiveDayTrends.best
@@ -1100,7 +1100,7 @@ export default function AdminPage() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
               <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Worst day</p>
               <p className="text-lg font-semibold text-slate-900 mt-2">
                 {lastFiveDayTrends.worst
@@ -1112,17 +1112,17 @@ export default function AdminPage() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
               <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Last close total</p>
               <p className="text-2xl font-semibold text-slate-900 mt-2">{lastCloseTotal.toLocaleString()} CFA</p>
               <p className="text-xs text-slate-500 mt-2">Last completed business day</p>
             </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+          <div className="mt-6 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
+                <tr className="border-b border-slate-300 bg-slate-100">
                   <th className="text-left px-6 py-3 text-[11px] font-semibold tracking-[0.2em] text-slate-500">Day</th>
                   <th className="text-right px-6 py-3 text-[11px] font-semibold tracking-[0.2em] text-slate-500">Total Sales</th>
                   <th className="text-right px-6 py-3 text-[11px] font-semibold tracking-[0.2em] text-slate-500">Delta</th>
@@ -1148,7 +1148,7 @@ export default function AdminPage() {
                       : ` (${record.deltaPct >= 0 ? '+' : ''}${record.deltaPct.toFixed(1)}%)`;
 
                     return (
-                      <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <tr key={idx} className="border-b border-slate-200 last:border-0 hover:bg-slate-100">
                         <td className="px-6 py-3 text-sm text-slate-900">
                           {new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
@@ -1188,15 +1188,15 @@ export default function AdminPage() {
               <p className="text-sm text-slate-500">Status snapshot for {formatShortDate(todayKey)}</p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Open: {currentStatusCounts.OPEN}</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Closed: {currentStatusCounts.CLOSED}</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Not opened: {currentStatusCounts.NOT_OPENED}</span>
+              <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">Open: {currentStatusCounts.OPEN}</span>
+              <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">Closed: {currentStatusCounts.CLOSED}</span>
+              <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">Not opened: {currentStatusCounts.NOT_OPENED}</span>
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {currentStatusCards.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+              <div className="rounded-2xl border border-slate-300 bg-white p-6 text-sm text-slate-500">
                 No current status data yet.
               </div>
             ) : (
@@ -1222,7 +1222,7 @@ export default function AdminPage() {
                   : [];
 
                 return (
-                  <div key={card.depotId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div key={card.depotId} className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Current status</p>
@@ -1284,10 +1284,10 @@ export default function AdminPage() {
                         </div>
                         {card.status === 'CLOSED' && (
                           <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                            <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">
                               Cash sales: {card.cashSales.toLocaleString()} CFA
                             </span>
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                            <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">
                               Mobile sales: {card.mobileSales.toLocaleString()} CFA
                             </span>
                           </div>
@@ -1314,19 +1314,19 @@ export default function AdminPage() {
                         )}
 
                         {card.cashReviewLabel && (
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          <div className="rounded-2xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-600">
                             Cash review: <span className="font-semibold text-slate-900">{card.cashReviewLabel}</span>
                           </div>
                         )}
 
                         {inventoryEntries.length > 0 && (
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="rounded-2xl border border-slate-300 bg-slate-100 p-3">
                             <p className="text-xs text-slate-500 mb-2">
                               {card.status === 'CLOSED' ? 'Closing inventory' : 'Opening inventory'}
                             </p>
                             <div className="grid gap-2 sm:grid-cols-2 text-xs text-slate-600">
                               {inventoryEntries.map(entry => (
-                                <div key={entry.key} className="flex items-center justify-between border-b border-slate-200 py-1">
+                                <div key={entry.key} className="flex items-center justify-between border-b border-slate-300 py-1">
                                   <span>{INVENTORY_LABELS[entry.key] || entry.key}</span>
                                   <span className="font-semibold text-slate-900">{entry.value}</span>
                                 </div>
@@ -1351,7 +1351,7 @@ export default function AdminPage() {
 
         {/* SECTION 2: DAY SUMMARY */}
         <section className="mb-12">
-          <div className="rounded-2xl bg-slate-950 text-white p-6 shadow-sm">
+          <div className="rounded-2xl bg-slate-900 text-white p-6 shadow-sm">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-[11px] font-semibold tracking-[0.25em] text-slate-400">DAY SUMMARY</h3>
               <p className="text-xs text-slate-400">Last close: {lastCompletedDateFormatted || 'No date'}</p>
@@ -1387,19 +1387,19 @@ export default function AdminPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-4 mb-3">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">SKUs tracked</p>
               <p className="text-xl font-semibold text-slate-900">{inventoryInsights.summary.totalSkus}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Changes captured</p>
               <p className="text-xl font-semibold text-slate-900">{inventoryInsights.summary.totalChanges}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Restocks</p>
               <p className="text-xl font-semibold text-slate-900">{inventoryInsights.summary.restocked}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Depletions</p>
               <p className="text-xl font-semibold text-slate-900">{inventoryInsights.summary.depleted}</p>
             </div>
@@ -1411,12 +1411,12 @@ export default function AdminPage() {
             </p>
           )}
 
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="rounded-2xl border border-slate-300 bg-white shadow-sm">
             {inventoryInsights.depotEvents.length === 0 ? (
               <div className="p-6 text-sm text-slate-500">No inventory changes captured for the last close.</div>
             ) : (
               inventoryInsights.depotEvents.map((depot, idx) => (
-                <div key={idx} className="border-b border-slate-100 last:border-0 p-6">
+                <div key={idx} className="border-b border-slate-200 last:border-0 p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{depot.depot}</p>
@@ -1427,7 +1427,7 @@ export default function AdminPage() {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {depot.changes.map((change, changeIdx) => (
-                      <div key={changeIdx} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div key={changeIdx} className="rounded-xl border border-slate-300 bg-slate-100 px-3 py-2">
                         <p className="text-xs font-semibold text-slate-700">
                           {INVENTORY_LABELS[change.sku] || change.sku}
                         </p>
@@ -1457,19 +1457,19 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Total recorded sales</p>
               <p className="text-xl font-semibold text-slate-900">{thisMonthMetrics.totalSales.toLocaleString()} CFA</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Completed days</p>
               <p className="text-xl font-semibold text-slate-900">{thisMonthMetrics.completedDays}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Avg sales per day</p>
               <p className="text-xl font-semibold text-slate-900">{Math.round(thisMonthMetrics.avgSalesPerDay).toLocaleString()} CFA</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Cash review days</p>
               <p className="text-xl font-semibold text-slate-900">{thisMonthMetrics.cashReviewDays}</p>
             </div>
@@ -1485,19 +1485,19 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Total recorded sales</p>
               <p className="text-xl font-semibold text-slate-900">{yearToDateMetrics.totalSales.toLocaleString()} CFA</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Completed days</p>
               <p className="text-xl font-semibold text-slate-900">{yearToDateMetrics.completedDays}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Avg sales per day</p>
               <p className="text-xl font-semibold text-slate-900">{Math.round(yearToDateMetrics.avgSalesPerDay).toLocaleString()} CFA</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">Cash review days</p>
               <p className="text-xl font-semibold text-slate-900">{yearToDateMetrics.cashReviewDays}</p>
             </div>
@@ -1507,7 +1507,7 @@ export default function AdminPage() {
         {/* SECTION 4: Month-over-month context */}
         {monthOverMonthChange !== null && (
           <section className="mb-12">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-600">
                 vs last month: <span className={`font-semibold ${monthOverMonthChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {monthOverMonthChange >= 0 ? '+' : ''}{monthOverMonthChange.toFixed(1)}%
@@ -1525,7 +1525,7 @@ export default function AdminPage() {
               <p className="text-sm text-slate-500">Last 14 closed days, cash + mobile</p>
             </div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={salesHistoryChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <XAxis
@@ -1561,14 +1561,14 @@ export default function AdminPage() {
             <p className="text-xs text-slate-400">{filteredEvents.length} events</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mb-4">
+          <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm mb-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Depot</label>
                 <select
                   value={filterDepot}
                   onChange={(event) => setFilterDepot(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                 >
                   <option value="All">All depots</option>
                   {depotOptions.map(depot => (
@@ -1583,7 +1583,7 @@ export default function AdminPage() {
                 <select
                   value={filterOperator}
                   onChange={(event) => setFilterOperator(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                 >
                   <option value="All">All operators</option>
                   {operatorOptions.map(operator => (
@@ -1598,7 +1598,7 @@ export default function AdminPage() {
                 <select
                   value={filterRange}
                   onChange={(event) => setFilterRange(event.target.value as '7d' | '30d' | '90d' | 'all')}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                 >
                   <option value="7d">Last 7 days</option>
                   <option value="30d">Last 30 days</option>
@@ -1611,7 +1611,7 @@ export default function AdminPage() {
                 <select
                   value={sortOrder}
                   onChange={(event) => setSortOrder(event.target.value as 'newest' | 'oldest')}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                 >
                   <option value="newest">Newest first</option>
                   <option value="oldest">Oldest first</option>
@@ -1620,15 +1620,15 @@ export default function AdminPage() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-500">
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Open: {eventStatusCounts.OPEN}</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Closed: {eventStatusCounts.CLOSE}</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Not opened: {eventStatusCounts.NOT_OPENED}</span>
+              <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">Open: {eventStatusCounts.OPEN}</span>
+              <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">Closed: {eventStatusCounts.CLOSE}</span>
+              <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">Not opened: {eventStatusCounts.NOT_OPENED}</span>
             </div>
           </div>
 
           <div className="space-y-3">
             {filteredEvents.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+              <div className="rounded-2xl border border-slate-300 bg-white p-6 text-sm text-slate-500">
                 No events match the current filters.
               </div>
             ) : (
@@ -1655,7 +1655,7 @@ export default function AdminPage() {
                   : [];
 
                 return (
-                  <div key={event.id} className={`rounded-2xl border border-l-4 bg-white/90 p-4 shadow-sm ${eventBorder}`}>
+                  <div key={event.id} className={`rounded-2xl border border-l-4 bg-white p-4 shadow-sm ${eventBorder}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-[11px] font-semibold tracking-[0.3em] text-slate-400">{event.type.replace('_', ' ')}</p>
@@ -1671,16 +1671,16 @@ export default function AdminPage() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                      <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">
                         Operator: {event.operator || 'Unassigned'}
                       </span>
                       {event.sales !== undefined && (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                        <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">
                           Sales: {event.sales.toLocaleString()} CFA
                         </span>
                       )}
                       {event.cashReviewLabel && (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                        <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1">
                           Cash review: {event.cashReviewLabel}
                         </span>
                       )}
@@ -1723,11 +1723,11 @@ export default function AdminPage() {
                         )}
 
                         {inventoryEntries.length > 0 && (
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="rounded-2xl border border-slate-300 bg-slate-100 p-3">
                             <p className="text-xs text-slate-500 mb-2">Inventory snapshot</p>
                             <div className="grid gap-2 sm:grid-cols-2 text-xs text-slate-600">
                               {inventoryEntries.map(entry => (
-                                <div key={entry.key} className="flex items-center justify-between border-b border-slate-200 py-1">
+                                <div key={entry.key} className="flex items-center justify-between border-b border-slate-300 py-1">
                                   <span>{INVENTORY_LABELS[entry.key] || entry.key}</span>
                                   <span className="font-semibold text-slate-900">{entry.value}</span>
                                 </div>
@@ -1758,10 +1758,10 @@ export default function AdminPage() {
               <p className="text-sm text-slate-500">Sales and cash review by business day</p>
             </div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+          <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
+                <tr className="border-b border-slate-300 bg-slate-100">
                   <th className="text-left px-6 py-3 text-[11px] font-semibold tracking-[0.2em] text-slate-500">Business Day</th>
                   <th className="text-right px-6 py-3 text-[11px] font-semibold tracking-[0.2em] text-slate-500">Total Sales (CFA)</th>
                   <th className="text-right px-6 py-3 text-[11px] font-semibold tracking-[0.2em] text-slate-500">Closed Depots</th>
@@ -1770,7 +1770,7 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {pagedRecords.map((record, idx) => (
-                  <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <tr key={idx} className="border-b border-slate-200 last:border-0 hover:bg-slate-100">
                     <td className="px-6 py-3 text-sm text-slate-900">
                       {new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </td>
@@ -1794,7 +1794,7 @@ export default function AdminPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="bg-slate-50 px-6 py-3 flex justify-between items-center border-t border-slate-200">
+              <div className="bg-slate-100 px-6 py-3 flex justify-between items-center border-t border-slate-300">
                 <p className="text-xs text-slate-600">
                   Showing {((currentPage - 1) * rowsPerPage) + 1}-{Math.min(currentPage * rowsPerPage, allDailyRecords.length)} of {allDailyRecords.length}
                 </p>
@@ -1802,17 +1802,17 @@ export default function AdminPage() {
                   <button
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage(p => p - 1)}
-                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold disabled:opacity-30 hover:bg-slate-50"
+                    className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold disabled:opacity-30 hover:bg-slate-100"
                   >
                     Previous
                   </button>
-                  <span className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold">
+                  <span className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold">
                     {currentPage} / {totalPages}
                   </span>
                   <button
                     disabled={currentPage === totalPages}
                     onClick={() => setCurrentPage(p => p + 1)}
-                    className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold disabled:opacity-30 hover:bg-slate-50"
+                    className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold disabled:opacity-30 hover:bg-slate-100"
                   >
                     Next
                   </button>
