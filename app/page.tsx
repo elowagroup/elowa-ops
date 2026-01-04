@@ -534,24 +534,24 @@ const TruthBubble: React.FC<{
         </div>
       </div>
 
-    <div className="grid grid-cols-2 gap-2 text-xs">
+      <div className="grid grid-cols-2 gap-2 text-xs">
       {Object.entries(openData.inventory).map(([k, v]) => (
         <div key={k} className="flex justify-between border-b border-slate-800 py-1">
           <span className="text-slate-300">{k.replace(/([A-Z])/g, " $1")}</span>
           <span className="font-bold text-blue-300">{v}</span>
         </div>
       ))}
-    </div>
+      </div>
 
-    <div className="pt-3 border-t border-slate-700 flex justify-between">
-      <span className="text-xs uppercase tracking-widest text-slate-400 font-black">
-        Opening Cash
-      </span>
-      <span className="text-2xl font-black">
-        {openData.cash} <span className="text-blue-400 text-xs">CFA</span>
-      </span>
+      <div className="pt-3 border-t border-slate-700 flex justify-between">
+        <span className="text-xs uppercase tracking-widest text-slate-400 font-black">
+          Opening Cash
+        </span>
+        <span className="text-2xl font-black">
+          {openData.cash} <span className="text-blue-400 text-xs">CFA</span>
+        </span>
+      </div>
     </div>
-  </div>
   );
 };
 
