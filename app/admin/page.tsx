@@ -38,14 +38,14 @@ interface DepotDayOpenRow {
   business_date: string;
   opening_inventory?: Record<string, string> | null;
   operator_name?: string | null;
-  created_at?: string | null;
+  opened_at?: string | null;
 }
 
 interface DepotDayCloseMetaRow {
   depot_id: string;
   business_date: string;
   operator_name?: string | null;
-  created_at?: string | null;
+  closed_at?: string | null;
 }
 
 type DepotSummary = {
@@ -183,11 +183,11 @@ export default function AdminPage() {
 
         const { data: closeData, error: closeError } = await supabase
           .from("depot_day_close")
-          .select("depot_id,business_date,cash_sales_total_cfa,mobile_sales_total_cfa,closing_cash_cfa,operator_name,variance_note,closing_inventory,created_at");
+          .select("depot_id,business_date,cash_sales_total_cfa,mobile_sales_total_cfa,closing_cash_cfa,operator_name,variance_note,closing_inventory,closed_at");
 
         const { data: openData, error: openError } = await supabase
           .from("depot_day_open")
-          .select("depot_id,business_date,opening_inventory,operator_name,created_at");
+          .select("depot_id,business_date,opening_inventory,operator_name,opened_at");
 
         const loadError = supabaseError || closeError || openError;
 
@@ -209,7 +209,7 @@ export default function AdminPage() {
               closeInventoryMap[`${row.depot_id}__${row.business_date}`] = row.closing_inventory;
             }
             closeMeta[`${row.depot_id}__${row.business_date}`] = {
-              closedAt: parsePgTimestamp(row.created_at),
+              closedAt: parsePgTimestamp(row.closed_at),
               operator: row.operator_name ?? null
             };
           });
@@ -218,7 +218,7 @@ export default function AdminPage() {
               openInventoryMap[`${row.depot_id}__${row.business_date}`] = row.opening_inventory;
             }
             openMeta[`${row.depot_id}__${row.business_date}`] = {
-              openedAt: parsePgTimestamp(row.created_at),
+              openedAt: parsePgTimestamp(row.opened_at),
               operator: row.operator_name ?? null
             };
           });
