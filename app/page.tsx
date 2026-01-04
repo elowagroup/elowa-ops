@@ -35,7 +35,10 @@ type OpenData = {
 type CloseData = {
   cash: string;
   mobile: string;
+  closingCash: string;
   total: number;
+  restockCash: string;
+  restockSkus: string[];
   varianceNote: string;
   inventory: Inventory;
   closedAt: string;
@@ -253,7 +256,7 @@ export default function Page() {
       setOpenData({
         cash: String(data.opening_cash_cfa),
         inventory: data.opening_inventory as Inventory,
-        openedAt: parsePgTimestamp(data.created_at),
+        openedAt: parsePgTimestamp(data.opened_at ?? data.created_at),
       });
     }
   };
@@ -445,6 +448,7 @@ export default function Page() {
           {screen === "close" && openData && depot && operator && (
             <CloseForm
               lang={lang}
+              openData={openData}
               onSubmit={async (data) => {
                 const { error } = await supabase.from("depot_day_close").insert({
                   depot_id: depot,
@@ -452,8 +456,12 @@ export default function Page() {
                   business_date: businessDate,
                   cash_sales_total_cfa: Number(data.cash),
                   mobile_sales_total_cfa: Number(data.mobile),
-                  closing_cash_cfa: Number(data.cash),
+                  closing_cash_cfa: Number(data.closingCash),
                   closing_inventory: data.inventory,
+                  restock_cash_used: data.restockSkus.length
+                    ? Number(data.restockCash)
+                    : 0,
+                  restock_skus: data.restockSkus,
                   variance_note: data.varianceNote || null,
                 });
 
@@ -582,19 +590,81 @@ const OpenForm: React.FC<{
 
 const CloseForm: React.FC<{
   lang: Lang;
+  openData: OpenData;
   onSubmit: (d: CloseData) => void;
-}> = ({ lang, onSubmit }) => {
+}> = ({ lang, openData, onSubmit }) => {
   const [cash, setCash] = useState("");
   const [mobile, setMobile] = useState("");
+  const [closingCash, setClosingCash] = useState("");
+  const [restockCash, setRestockCash] = useState("");
   const [note, setNote] = useState("");
   const [inventory, setInventory] = useState<Inventory>(DEFAULT_INVENTORY());
+  const [restockSelections, setRestockSelections] = useState<Record<string, boolean>>({});
 
   const total = Number(cash || 0) + Number(mobile || 0);
+  const openingCashValue = Number(openData.cash || 0);
+
+  const restockCandidates = useMemo(() => {
+    const candidates: { key: keyof Inventory; open: string; close: string }[] = [];
+    const numericKeys = [
+      "riceWhite",
+      "riceBrown",
+      "ricePerfumed",
+      "oil25",
+      "oil5",
+      "oil1",
+    ] as const;
+
+    numericKeys.forEach((key) => {
+      const openValue = Number(openData.inventory[key] || 0);
+      const closeValue = Number(inventory[key] || 0);
+      if (Number.isFinite(openValue) && Number.isFinite(closeValue) && closeValue > openValue) {
+        candidates.push({ key, open: String(openValue), close: String(closeValue) });
+      }
+    });
+
+    const statusRank: Record<Inventory["spaghetti"], number> = {
+      OUT: 0,
+      LOW: 1,
+      IN: 2,
+    };
+    const openStatus = openData.inventory.spaghetti;
+    const closeStatus = inventory.spaghetti;
+    if (statusRank[closeStatus] > statusRank[openStatus]) {
+      candidates.push({ key: "spaghetti", open: openStatus, close: closeStatus });
+    }
+
+    return candidates;
+  }, [inventory, openData]);
+
+  useEffect(() => {
+    setRestockSelections((prev) => {
+      const next: Record<string, boolean> = {};
+      restockCandidates.forEach((candidate) => {
+        next[candidate.key] = prev[candidate.key] ?? true;
+      });
+      return next;
+    });
+  }, [restockCandidates]);
+
+  const restockSkus = restockCandidates
+    .filter((candidate) => restockSelections[candidate.key])
+    .map((candidate) => candidate.key);
+  const restockSelected = restockSkus.length > 0;
+  const restockCostValue = restockSelected ? Number(restockCash || 0) : 0;
+  const closingCashValue = Number(closingCash || 0);
+  const expectedCash = openingCashValue + Number(cash || 0) - restockCostValue;
+  const variance = closingCashValue - expectedCash;
+  const netCashMovement = closingCashValue - openingCashValue;
 
   const valid =
     cash !== "" &&
     mobile !== "" &&
-    Object.values(inventory).every((v) => v !== "");
+    closingCash !== "" &&
+    Object.values(inventory).every((v) => v !== "") &&
+    (!restockSelected || restockCash !== "");
+
+  const formatSkuLabel = (key: string) => key.replace(/([A-Z])/g, " $1");
 
   return (
     <section className="space-y-6">
@@ -617,6 +687,13 @@ const CloseForm: React.FC<{
       </div>
 
       <Input
+        label="Closing Cash (CFA)"
+        value={closingCash}
+        onChange={setClosingCash}
+        type="number"
+      />
+
+      <Input
         label={lang === "EN" ? "Notes (optional)" : "Notes (optionnel)"}
         value={note}
         onChange={setNote}
@@ -624,13 +701,88 @@ const CloseForm: React.FC<{
 
       <InventoryInputs inventory={inventory} setInventory={setInventory} />
 
+      {restockCandidates.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black uppercase tracking-widest text-amber-900">
+              Restock Check
+            </p>
+            <span className="text-[10px] font-semibold text-amber-700">
+              Increase detected vs opening
+            </span>
+          </div>
+          <div className="grid gap-2">
+            {restockCandidates.map((candidate) => (
+              <label
+                key={candidate.key}
+                className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-amber-900"
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!restockSelections[candidate.key]}
+                    onChange={(e) =>
+                      setRestockSelections((prev) => ({
+                        ...prev,
+                        [candidate.key]: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 accent-amber-600"
+                  />
+                  <span className="font-semibold">{formatSkuLabel(candidate.key)}</span>
+                </span>
+                <span className="text-[10px] text-amber-700">
+                  {candidate.open} → {candidate.close}
+                </span>
+              </label>
+            ))}
+          </div>
+          {restockSelected && (
+            <Input
+              label="Total Restock Cost (CFA)"
+              value={restockCash}
+              onChange={setRestockCash}
+              type="number"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-slate-900 text-white p-4 shadow-lg space-y-2">
+        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-slate-300 font-black">
+          <span>Expected Cash</span>
+          <span>{expectedCash.toLocaleString()} CFA</span>
+        </div>
+        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-slate-300 font-black">
+          <span>Closing Cash</span>
+          <span>{closingCashValue.toLocaleString()} CFA</span>
+        </div>
+        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-slate-300 font-black">
+          <span>Variance</span>
+          <span className={variance < 0 ? "text-rose-300" : "text-emerald-300"}>
+            {variance >= 0 ? "+" : ""}
+            {variance.toLocaleString()} CFA
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-slate-400">
+          <span>Net cash movement</span>
+          <span>{netCashMovement >= 0 ? "+" : ""}{netCashMovement.toLocaleString()} CFA</span>
+        </div>
+        <p className="text-[10px] text-slate-400">
+          Expected = opening cash + cash sales − restock cost
+        </p>
+      </div>
+
       <Button
         disabled={!valid}
         onClick={() =>
           onSubmit({
             cash,
             mobile,
+            closingCash,
             total,
+            restockCash,
+            restockSkus,
             varianceNote: note,
             inventory,
             closedAt: new Date().toLocaleTimeString(),

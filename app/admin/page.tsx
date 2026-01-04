@@ -16,6 +16,8 @@ type DepotDayCloseRow = {
   cash_sales_total_cfa: number | null;
   mobile_sales_total_cfa: number | null;
   closing_cash_cfa: number | null;
+  restock_cash_used?: number | null;
+  restock_skus?: string[] | null;
   operator_name?: string | null;
   variance_note?: string | null;
   closing_inventory?: Record<string, string> | null;
@@ -39,6 +41,7 @@ interface DepotDayOpenRow {
   opening_inventory?: Record<string, string> | null;
   operator_name?: string | null;
   opened_at?: string | null;
+  created_at?: string | null;
 }
 
 interface DepotDayCloseMetaRow {
@@ -46,14 +49,20 @@ interface DepotDayCloseMetaRow {
   business_date: string;
   operator_name?: string | null;
   closed_at?: string | null;
+  created_at?: string | null;
 }
 
 type DepotSummary = {
   depotId: string;
   closingStatus: 'OPEN' | 'CLOSED';
   recordedSales: number;
+  cashSales: number;
+  mobileSales: number;
   openingCash: number;
   closingCash: number;
+  netCashMovement: number;
+  cashVariance: number;
+  restockCashUsed: number;
   operator: string;
   varianceNote?: string;
   cashReviewLabel: string;
@@ -71,6 +80,8 @@ type DepotEvent = {
   openingCash?: number;
   closingCash?: number;
   sales?: number;
+  restockCashUsed?: number;
+  restockSkus?: string[] | null;
   cashReviewLabel?: string;
   varianceNote?: string;
   inventory?: Record<string, string> | null;
@@ -84,9 +95,15 @@ type CurrentStatusCard = {
   operator: string | null;
   openedAt: Date | null;
   closedAt: Date | null;
+  cashSales: number;
+  mobileSales: number;
   openingCash: number;
   closingCash: number;
   sales: number;
+  netCashMovement: number;
+  cashVariance: number;
+  restockCashUsed: number;
+  restockSkus: string[];
   cashReviewLabel: string | null;
   varianceNote?: string;
   openingInventory: Record<string, string> | null;
@@ -106,11 +123,11 @@ function convertSupabaseData(
       closing_cash_physical: row.closing_cash_cfa ?? closeRow?.closing_cash_cfa ?? 0,
       cash_sales_cfa: row.cash_sales_total_cfa ?? closeRow?.cash_sales_total_cfa ?? 0,
       mobile_sales_cfa: row.mobile_sales_total_cfa ?? closeRow?.mobile_sales_total_cfa ?? 0,
-      restock_cash_used: 0,
-      restock_skus: [],
+      restock_cash_used: closeRow?.restock_cash_used ?? 0,
+      restock_skus: closeRow?.restock_skus ?? [],
       operator_open: row.operator_open ?? null,
       operator_close: row.operator_close ?? closeRow?.operator_name ?? null,
-      variance_note: row.cash_variance_cfa ? `Variance: ${row.cash_variance_cfa} CFA` : closeRow?.variance_note || undefined,
+      variance_note: closeRow?.variance_note || undefined,
       opening_inventory: [],
       closing_inventory: []
     };
@@ -143,6 +160,13 @@ const INVENTORY_LABELS: Record<string, string> = {
 
 const INVENTORY_ORDER = Object.keys(INVENTORY_LABELS);
 
+const DEFAULT_DEPOTS = ['Benardkope', 'Adetikope'];
+
+const DEPOT_COLORS: Record<string, string> = {
+  Benardkope: 'bg-emerald-500',
+  Adetikope: 'bg-amber-500'
+};
+
 const parseQty = (value: unknown) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -154,6 +178,8 @@ const parsePgTimestamp = (value?: string | null) => {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? null : date;
 };
+
+const formatSigned = (value: number) => `${value >= 0 ? '+' : ''}${value.toLocaleString()}`;
 
 const formatShortDate = (value: string | Date) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -207,11 +233,11 @@ export default function AdminPage() {
 
         const { data: closeData, error: closeError } = await supabase
           .from("depot_day_close")
-          .select("depot_id,business_date,cash_sales_total_cfa,mobile_sales_total_cfa,closing_cash_cfa,operator_name,variance_note,closing_inventory,closed_at");
+          .select("*");
 
         const { data: openData, error: openError } = await supabase
           .from("depot_day_open")
-          .select("depot_id,business_date,opening_inventory,operator_name,opened_at");
+          .select("*");
 
         const loadError = supabaseError || closeError || openError;
 
@@ -233,7 +259,7 @@ export default function AdminPage() {
               closeInventoryMap[`${row.depot_id}__${row.business_date}`] = row.closing_inventory;
             }
             closeMeta[`${row.depot_id}__${row.business_date}`] = {
-              closedAt: parsePgTimestamp(row.closed_at),
+              closedAt: parsePgTimestamp(row.closed_at ?? row.created_at),
               operator: row.operator_name ?? null
             };
           });
@@ -242,7 +268,7 @@ export default function AdminPage() {
               openInventoryMap[`${row.depot_id}__${row.business_date}`] = row.opening_inventory;
             }
             openMeta[`${row.depot_id}__${row.business_date}`] = {
-              openedAt: parsePgTimestamp(row.opened_at),
+              openedAt: parsePgTimestamp(row.opened_at ?? row.created_at),
               operator: row.operator_name ?? null
             };
           });
@@ -294,8 +320,13 @@ export default function AdminPage() {
         depotId: depot.depot_id,
         closingStatus: isClosed ? 'CLOSED' : 'OPEN',
         recordedSales: getTotalSales(depot),
+        cashSales: depot.cash_sales_cfa,
+        mobileSales: depot.mobile_sales_cfa,
         openingCash: depot.opening_cash_cfa,
         closingCash: depot.closing_cash_physical,
+        netCashMovement: depot.closing_cash_physical - depot.opening_cash_cfa,
+        cashVariance: depot.closing_cash_physical - getExpectedCash(depot),
+        restockCashUsed: depot.restock_cash_used ?? 0,
         operator: depot.operator_close ?? depot.operator_open ?? 'Unknown',
         varianceNote: depot.variance_note,
         cashReviewLabel: reviewLabel,
@@ -335,7 +366,7 @@ export default function AdminPage() {
   }, [lastDayDepotSummaries, selectedLastCloseDepot]);
 
   const depotOptions = useMemo(() => {
-    return Array.from(new Set(data.map(item => item.depot_id))).sort();
+    return Array.from(new Set([...DEFAULT_DEPOTS, ...data.map(item => item.depot_id)])).sort();
   }, [data]);
 
   const operatorOptions = useMemo(() => {
@@ -355,7 +386,10 @@ export default function AdminPage() {
     <>
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">{summary.depotId}</h3>
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${DEPOT_COLORS[summary.depotId] ?? 'bg-slate-400'}`} />
+            {summary.depotId}
+          </h3>
           <p className="text-xs text-slate-500 uppercase tracking-[0.3em]">Business day close</p>
           <p className="text-xs text-slate-400">{formatShortDate(summary.businessDate)}</p>
         </div>
@@ -369,6 +403,9 @@ export default function AdminPage() {
               <p className="text-2xl font-semibold text-slate-900">
                 {summary.recordedSales.toLocaleString()} CFA
               </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Cash {summary.cashSales.toLocaleString()} • Mobile {summary.mobileSales.toLocaleString()}
+              </p>
             </div>
             <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Cash review</p>
@@ -376,8 +413,13 @@ export default function AdminPage() {
                 {summary.cashReviewLabel}
               </p>
               <p className="text-[10px] text-slate-400 mt-1">
-                Closing cash vs opening cash + cash sales (mobile excluded)
+                Closing cash vs opening cash + cash sales − restock
               </p>
+              {summary.restockCashUsed > 0 && (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Restock: {summary.restockCashUsed.toLocaleString()} CFA
+                </p>
+              )}
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 text-sm text-slate-600">
@@ -392,6 +434,18 @@ export default function AdminPage() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Closing cash</p>
               <p className="font-semibold text-slate-900">{summary.closingCash.toLocaleString()} CFA</p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 text-sm text-slate-600">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Net cash movement</p>
+              <p className="font-semibold text-slate-900">{formatSigned(summary.netCashMovement)} CFA</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Cash variance</p>
+              <p className={`font-semibold ${summary.cashVariance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {formatSigned(summary.cashVariance)} CFA
+              </p>
             </div>
           </div>
           {summary.varianceNote && (
@@ -666,9 +720,15 @@ export default function AdminPage() {
         operator: record?.operator_close ?? record?.operator_open ?? openMeta?.operator ?? closeMeta?.operator ?? null,
         openedAt: openMeta?.openedAt ?? null,
         closedAt: closeMeta?.closedAt ?? null,
+        cashSales: record?.cash_sales_cfa ?? 0,
+        mobileSales: record?.mobile_sales_cfa ?? 0,
         openingCash: record?.opening_cash_cfa ?? 0,
         closingCash: record?.closing_cash_physical ?? 0,
         sales: record ? getTotalSales(record) : 0,
+        netCashMovement: record ? record.closing_cash_physical - record.opening_cash_cfa : 0,
+        cashVariance: record ? record.closing_cash_physical - getExpectedCash(record) : 0,
+        restockCashUsed: record?.restock_cash_used ?? 0,
+        restockSkus: record?.restock_skus ?? [],
         cashReviewLabel: cashReview ? (cashReview.needsReview ? 'REQUIRES REVIEW' : 'BALANCED') : null,
         varianceNote: record?.variance_note,
         openingInventory: inventoryMaps.open[key] ?? null,
@@ -728,6 +788,8 @@ export default function AdminPage() {
           timestamp: closeMeta?.closedAt ?? null,
           closingCash: item.closing_cash_physical,
           sales: getTotalSales(item),
+          restockCashUsed: item.restock_cash_used ?? 0,
+          restockSkus: item.restock_skus ?? [],
           cashReviewLabel: cashReview.needsReview ? 'REQUIRES REVIEW' : 'BALANCED',
           varianceNote: item.variance_note,
           inventory: inventoryMaps.close[key] ?? null
@@ -922,11 +984,12 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-slate-50 to-slate-100 text-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950/15 via-slate-50 to-slate-100 text-slate-900">
       <div className="max-w-6xl mx-auto px-6 py-10">
         {/* Header */}
         <div className="mb-10 rounded-2xl border border-slate-200/70 bg-white/80 backdrop-blur px-6 py-5 shadow-sm">
           <div className="flex flex-col gap-6">
+            <div className="h-1 w-full rounded-full bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900" />
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-semibold tracking-[0.3em] text-slate-400">ELOWA OPERATIONS</p>
@@ -1163,8 +1226,16 @@ export default function AdminPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Current status</p>
-                        <h3 className="text-lg font-semibold text-slate-900">{card.depotId}</h3>
+                        <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                          <span className={`h-2 w-2 rounded-full ${DEPOT_COLORS[card.depotId] ?? 'bg-slate-400'}`} />
+                          {card.depotId}
+                        </h3>
                         <p className="text-xs text-slate-500">Operator: {card.operator || 'Unassigned'}</p>
+                        {card.status === 'CLOSED' && (
+                          <p className="text-xs text-slate-500">
+                            Sales: {card.sales.toLocaleString()} CFA
+                          </p>
+                        )}
                       </div>
                       <span className={`text-[10px] font-semibold px-3 py-1 rounded-full ${statusClasses}`}>
                         {card.status === 'NOT_OPENED' ? 'NOT OPENED' : card.status}
@@ -1211,6 +1282,36 @@ export default function AdminPage() {
                             </div>
                           )}
                         </div>
+                        {card.status === 'CLOSED' && (
+                          <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                              Cash sales: {card.cashSales.toLocaleString()} CFA
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                              Mobile sales: {card.mobileSales.toLocaleString()} CFA
+                            </span>
+                          </div>
+                        )}
+                        {card.status === 'CLOSED' && (
+                          <div className="grid gap-3 sm:grid-cols-2 text-sm text-slate-600">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Net cash movement</p>
+                              <p className="font-semibold text-slate-900">{formatSigned(card.netCashMovement)} CFA</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Cash variance</p>
+                              <p className={`font-semibold ${card.cashVariance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                {formatSigned(card.cashVariance)} CFA
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {card.status === 'CLOSED' && card.restockCashUsed > 0 && (
+                          <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                            Restock cost: {card.restockCashUsed.toLocaleString()} CFA
+                          </div>
+                        )}
 
                         {card.cashReviewLabel && (
                           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -1270,7 +1371,7 @@ export default function AdminPage() {
               </div>
             </div>
             <p className="text-xs text-slate-400 mt-4">
-              Cash review compares closing cash vs opening cash + cash sales (mobile excluded).
+              Cash review compares closing cash vs opening cash + cash sales − restock.
             </p>
           </div>
         </section>
@@ -1614,6 +1715,12 @@ export default function AdminPage() {
                             </div>
                           )}
                         </div>
+
+                        {event.restockCashUsed !== undefined && event.restockCashUsed > 0 && (
+                          <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                            Restock cost: {event.restockCashUsed.toLocaleString()} CFA
+                          </div>
+                        )}
 
                         {inventoryEntries.length > 0 && (
                           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
