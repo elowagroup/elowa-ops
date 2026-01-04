@@ -29,7 +29,7 @@ type Inventory = {
 type OpenData = {
   cash: string;
   inventory: Inventory;
-  openedAt: string;
+  openedAt: Date | null;
 };
 
 type CloseData = {
@@ -40,6 +40,13 @@ type CloseData = {
   inventory: Inventory;
   closedAt: string;
 };
+
+function parsePgTimestamp(ts?: string | null): Date | null {
+  if (!ts) return null;
+  const iso = ts.replace(" ", "T").replace(/\+00(:00)?$/, "Z");
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 const DEFAULT_INVENTORY = (): Inventory => ({
   riceWhite: "",
@@ -246,7 +253,7 @@ export default function Page() {
       setOpenData({
         cash: String(data.opening_cash_cfa),
         inventory: data.opening_inventory as Inventory,
-        openedAt: new Date(data.created_at).toLocaleTimeString(),
+        openedAt: parsePgTimestamp(data.created_at),
       });
     }
   };
@@ -409,7 +416,7 @@ export default function Page() {
 
                 setOpenData({
                   ...data,
-                  openedAt: new Date().toLocaleTimeString(),
+                  openedAt: new Date(),
                 });
 
                 setDepotStates((s) => ({ ...s, [depot]: "OPENED" }));
@@ -499,24 +506,33 @@ const TruthBubble: React.FC<{
   depot: Depot;
   operator: Operator;
   openData: OpenData;
-}> = ({ depot, operator, openData }) => (
-  <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-700 space-y-4">
-    <div className="flex justify-between border-b border-slate-700 pb-3">
-      <div>
-        <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">
-          Depot / Operator
-        </p>
-        <p className="font-bold">
-          {depot} · {operator}
-        </p>
+}> = ({ depot, operator, openData }) => {
+  const formattedOpenedAt = openData.openedAt
+    ? openData.openedAt.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "—";
+
+  return (
+    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-700 space-y-4">
+      <div className="flex justify-between border-b border-slate-700 pb-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">
+            Depot / Operator
+          </p>
+          <p className="font-bold">
+            {depot} · {operator}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">
+            Opened At
+          </p>
+          <p className="font-bold">{formattedOpenedAt}</p>
+        </div>
       </div>
-      <div className="text-right">
-        <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">
-          Opened At
-        </p>
-        <p className="font-bold">{openData.openedAt}</p>
-      </div>
-    </div>
 
     <div className="grid grid-cols-2 gap-2 text-xs">
       {Object.entries(openData.inventory).map(([k, v]) => (
@@ -536,7 +552,8 @@ const TruthBubble: React.FC<{
       </span>
     </div>
   </div>
-);
+  );
+};
 
 const OpenForm: React.FC<{
   lang: Lang;
