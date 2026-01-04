@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from 'react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { DepotDayEvent } from './types';
 import { EventBadge } from './components/StatusBadge';
 import { createClient } from '../lib/supabase';
@@ -32,6 +32,49 @@ interface DepotDayStateRow {
   mobile_sales_total_cfa?: number | null;
   closing_cash_cfa?: number | null;
 }
+
+interface DepotDayOpenRow {
+  depot_id: string;
+  business_date: string;
+  opening_inventory?: Record<string, string> | null;
+  operator_name?: string | null;
+  created_at?: string | null;
+}
+
+interface DepotDayCloseMetaRow {
+  depot_id: string;
+  business_date: string;
+  operator_name?: string | null;
+  created_at?: string | null;
+}
+
+type DepotSummary = {
+  depotId: string;
+  closingStatus: 'OPEN' | 'CLOSED';
+  recordedSales: number;
+  openingCash: number;
+  closingCash: number;
+  operator: string;
+  varianceNote?: string;
+  cashReviewLabel: string;
+  cashReviewTone: 'emerald' | 'amber' | 'slate';
+  businessDate: string;
+};
+
+type DepotEvent = {
+  id: string;
+  type: 'OPEN' | 'CLOSE' | 'NOT_OPENED';
+  depotId: string;
+  operator: string | null;
+  businessDate: string;
+  timestamp: Date | null;
+  openingCash?: number;
+  closingCash?: number;
+  sales?: number;
+  cashReviewLabel?: string;
+  varianceNote?: string;
+  inventory?: Record<string, string> | null;
+};
 
 function convertSupabaseData(
   supabaseData: DepotDayStateRow[],
@@ -87,6 +130,18 @@ const parseQty = (value: unknown) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const parsePgTimestamp = (value?: string | null) => {
+  if (!value) return null;
+  const iso = value.replace(' ', 'T').replace(/\+00(:00)?$/, 'Z');
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatShortDate = (value: string | Date) => {
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 export default function AdminPage() {
   const [data, setData] = useState<DepotDayEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,6 +152,15 @@ export default function AdminPage() {
     open: Record<string, Record<string, string>>;
     close: Record<string, Record<string, string>>;
   }>({ open: {}, close: {} });
+  const [openMetaMap, setOpenMetaMap] = useState<Record<string, { openedAt: Date | null; operator: string | null }>>({});
+  const [closeMetaMap, setCloseMetaMap] = useState<Record<string, { closedAt: Date | null; operator: string | null }>>({});
+  const [selectedLastCloseDepot, setSelectedLastCloseDepot] = useState<string>('');
+  const [showLastCloseSplit, setShowLastCloseSplit] = useState(false);
+  const [filterDepot, setFilterDepot] = useState('All');
+  const [filterOperator, setFilterOperator] = useState('All');
+  const [filterRange, setFilterRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const rowsPerPage = 8;
 
   useEffect(() => {
@@ -119,11 +183,11 @@ export default function AdminPage() {
 
         const { data: closeData, error: closeError } = await supabase
           .from("depot_day_close")
-          .select("depot_id,business_date,cash_sales_total_cfa,mobile_sales_total_cfa,closing_cash_cfa,operator_name,variance_note,closing_inventory");
+          .select("depot_id,business_date,cash_sales_total_cfa,mobile_sales_total_cfa,closing_cash_cfa,operator_name,variance_note,closing_inventory,created_at");
 
         const { data: openData, error: openError } = await supabase
           .from("depot_day_open")
-          .select("depot_id,business_date,opening_inventory");
+          .select("depot_id,business_date,opening_inventory,operator_name,created_at");
 
         const loadError = supabaseError || closeError || openError;
 
@@ -133,21 +197,36 @@ export default function AdminPage() {
           const closeMap = new Map<string, DepotDayCloseRow>();
           const closeInventoryMap: Record<string, Record<string, string>> = {};
           const openInventoryMap: Record<string, Record<string, string>> = {};
+          const openMeta: Record<string, { openedAt: Date | null; operator: string | null }> = {};
+          const closeMeta: Record<string, { closedAt: Date | null; operator: string | null }> = {};
 
-          (closeData || []).forEach(row => {
+          const closeRows = (closeData || []) as (DepotDayCloseRow & DepotDayCloseMetaRow)[];
+          const openRows = (openData || []) as DepotDayOpenRow[];
+
+          closeRows.forEach(row => {
             closeMap.set(`${row.depot_id}__${row.business_date}`, row);
             if (row.closing_inventory) {
               closeInventoryMap[`${row.depot_id}__${row.business_date}`] = row.closing_inventory;
             }
+            closeMeta[`${row.depot_id}__${row.business_date}`] = {
+              closedAt: parsePgTimestamp(row.created_at),
+              operator: row.operator_name ?? null
+            };
           });
-          (openData || []).forEach(row => {
+          openRows.forEach(row => {
             if (row.opening_inventory) {
               openInventoryMap[`${row.depot_id}__${row.business_date}`] = row.opening_inventory;
             }
+            openMeta[`${row.depot_id}__${row.business_date}`] = {
+              openedAt: parsePgTimestamp(row.created_at),
+              operator: row.operator_name ?? null
+            };
           });
           const convertedData = convertSupabaseData(supabaseData || [], closeMap);
           setData(convertedData);
           setInventoryMaps({ open: openInventoryMap, close: closeInventoryMap });
+          setOpenMetaMap(openMeta);
+          setCloseMetaMap(closeMeta);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -168,11 +247,10 @@ export default function AdminPage() {
 
   const lastCompletedDateFormatted = useMemo(() => {
     if (!lastCompletedDay.date) return '';
-    const date = new Date(lastCompletedDay.date);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatShortDate(lastCompletedDay.date);
   }, [lastCompletedDay.date]);
 
-  const lastDayDepotSummaries = useMemo(() => {
+  const lastDayDepotSummaries = useMemo<DepotSummary[]>(() => {
     return lastCompletedDay.depots.map(depot => {
       const isClosed = Boolean(depot.operator_close);
       const cashReview = isClosed ? getCashReview(depot) : null;
@@ -198,6 +276,7 @@ export default function AdminPage() {
         varianceNote: depot.variance_note,
         cashReviewLabel: reviewLabel,
         cashReviewTone: reviewTone,
+        businessDate: depot.business_date
       };
     });
   }, [lastCompletedDay]);
@@ -219,6 +298,86 @@ export default function AdminPage() {
       cashIssues
     };
   }, [lastCompletedDay]);
+
+  useEffect(() => {
+    if (!selectedLastCloseDepot && lastDayDepotSummaries.length > 0) {
+      setSelectedLastCloseDepot(lastDayDepotSummaries[0].depotId);
+    }
+  }, [lastDayDepotSummaries, selectedLastCloseDepot]);
+
+  const headerDepotSummary = useMemo(() => {
+    if (!lastDayDepotSummaries.length) return null;
+    return lastDayDepotSummaries.find(summary => summary.depotId === selectedLastCloseDepot) || lastDayDepotSummaries[0];
+  }, [lastDayDepotSummaries, selectedLastCloseDepot]);
+
+  const depotOptions = useMemo(() => {
+    return Array.from(new Set(data.map(item => item.depot_id))).sort();
+  }, [data]);
+
+  const operatorOptions = useMemo(() => {
+    const operators = new Set<string>();
+    data.forEach(item => {
+      if (item.operator_open) operators.add(item.operator_open);
+      if (item.operator_close) operators.add(item.operator_close);
+    });
+    return Array.from(operators).sort();
+  }, [data]);
+
+  const lastCloseTotal = useMemo(() => {
+    return lastDayDepotSummaries.reduce((sum, summary) => sum + summary.recordedSales, 0);
+  }, [lastDayDepotSummaries]);
+
+  const renderDepotSummaryContent = (summary: DepotSummary) => (
+    <>
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">{summary.depotId}</h3>
+          <p className="text-xs text-slate-500 uppercase tracking-[0.3em]">Business day close</p>
+          <p className="text-xs text-slate-400">{formatShortDate(summary.businessDate)}</p>
+        </div>
+        <EventBadge type={summary.closingStatus} />
+      </div>
+      {summary.closingStatus === 'CLOSED' ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-slate-500">Recorded Sales</p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {summary.recordedSales.toLocaleString()} CFA
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
+              <p className="text-xs text-slate-500">Cash review</p>
+              <p className={`text-sm font-semibold ${summary.cashReviewTone === 'emerald' ? 'text-emerald-600' : summary.cashReviewTone === 'amber' ? 'text-amber-600' : 'text-slate-400'}`}>
+                {summary.cashReviewLabel}
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 text-sm text-slate-600">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Operator</p>
+              <p className="font-semibold text-slate-900">{summary.operator}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Opening cash</p>
+              <p className="font-semibold text-slate-900">{summary.openingCash.toLocaleString()} CFA</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Closing cash</p>
+              <p className="font-semibold text-slate-900">{summary.closingCash.toLocaleString()} CFA</p>
+            </div>
+          </div>
+          {summary.varianceNote && (
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {summary.varianceNote}
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400">Awaiting closure</p>
+      )}
+    </>
+  );
 
   // SECTION 3: THIS MONTH metrics
   const thisMonthMetrics = useMemo(() => {
@@ -320,9 +479,9 @@ export default function AdminPage() {
   // SECTION 5: Sales history chart (closed days only)
   const salesHistoryChart = useMemo(() => {
     const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-    const recentData = data.filter(d => new Date(d.business_date) >= thirtyDaysAgo && d.operator_close);
+    const recentData = data.filter(d => new Date(d.business_date) >= fourteenDaysAgo && d.operator_close);
 
     const dailyTotals: Record<string, number> = {};
     recentData.forEach(d => {
@@ -418,17 +577,113 @@ export default function AdminPage() {
     };
   }, [allDailyRecords, rolling5DayAvgByDate]);
 
-  const activityLog = useMemo(() => {
-    return allDailyRecords.slice(0, 5).map(record => {
-      const needsReview = record.needsReview.length > 0;
-      return {
-        date: record.date,
-        status: needsReview ? 'Cash review' : 'Balanced close',
-        detail: `${record.closedDepots}/${record.totalDepots} depots closed - ${record.sales.toLocaleString()} CFA`,
-        tone: needsReview ? 'warn' : 'ok'
-      };
+  const lastFullWeekSummary = useMemo(() => {
+    const now = new Date();
+    const currentWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    const lastWeekStart = new Date(currentWeekStart);
+    lastWeekStart.setDate(currentWeekStart.getDate() - 7);
+    const lastWeekEnd = new Date(currentWeekStart);
+    lastWeekEnd.setDate(currentWeekStart.getDate() - 1);
+
+    const weekRecords = allDailyRecords.filter(record => {
+      const date = new Date(record.date);
+      return date >= lastWeekStart && date <= lastWeekEnd;
     });
+
+    return {
+      totalSales: weekRecords.reduce((sum, record) => sum + record.sales, 0),
+      start: lastWeekStart,
+      end: lastWeekEnd,
+      days: weekRecords.length
+    };
   }, [allDailyRecords]);
+
+  const activityEvents = useMemo<DepotEvent[]>(() => {
+    const events: DepotEvent[] = [];
+
+    data.forEach(item => {
+      const key = `${item.depot_id}__${item.business_date}`;
+      const openMeta = openMetaMap[key];
+      const closeMeta = closeMetaMap[key];
+
+      if (item.operator_open) {
+        events.push({
+          id: `${key}-open`,
+          type: 'OPEN',
+          depotId: item.depot_id,
+          operator: openMeta?.operator ?? item.operator_open ?? null,
+          businessDate: item.business_date,
+          timestamp: openMeta?.openedAt ?? null,
+          openingCash: item.opening_cash_cfa,
+          inventory: inventoryMaps.open[key] ?? null
+        });
+      } else {
+        events.push({
+          id: `${key}-not-opened`,
+          type: 'NOT_OPENED',
+          depotId: item.depot_id,
+          operator: null,
+          businessDate: item.business_date,
+          timestamp: null
+        });
+      }
+
+      if (item.operator_close) {
+        const cashReview = getCashReview(item);
+        events.push({
+          id: `${key}-close`,
+          type: 'CLOSE',
+          depotId: item.depot_id,
+          operator: closeMeta?.operator ?? item.operator_close ?? null,
+          businessDate: item.business_date,
+          timestamp: closeMeta?.closedAt ?? null,
+          closingCash: item.closing_cash_physical,
+          sales: getTotalSales(item),
+          cashReviewLabel: cashReview.needsReview ? 'REQUIRES REVIEW' : 'BALANCED',
+          varianceNote: item.variance_note,
+          inventory: inventoryMaps.close[key] ?? null
+        });
+      }
+    });
+
+    return events;
+  }, [data, closeMetaMap, openMetaMap, inventoryMaps]);
+
+  const filteredEvents = useMemo(() => {
+    const now = new Date();
+    const rangeStart = (() => {
+      if (filterRange === '7d') return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      if (filterRange === '30d') return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      if (filterRange === '90d') return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      return null;
+    })();
+
+    const filtered = activityEvents.filter(event => {
+      if (filterDepot !== 'All' && event.depotId !== filterDepot) return false;
+      if (filterOperator !== 'All' && event.operator !== filterOperator) return false;
+      if (rangeStart) {
+        const eventDate = event.timestamp ?? new Date(`${event.businessDate}T00:00:00`);
+        if (eventDate < rangeStart) return false;
+      }
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      const aDate = a.timestamp ?? new Date(`${a.businessDate}T00:00:00`);
+      const bDate = b.timestamp ?? new Date(`${b.businessDate}T00:00:00`);
+      return sortOrder === 'newest' ? bDate.getTime() - aDate.getTime() : aDate.getTime() - bDate.getTime();
+    });
+  }, [activityEvents, filterDepot, filterOperator, filterRange, sortOrder]);
+
+  const eventStatusCounts = useMemo(() => {
+    return filteredEvents.reduce(
+      (acc, event) => {
+        acc[event.type] += 1;
+        return acc;
+      },
+      { OPEN: 0, CLOSE: 0, NOT_OPENED: 0 }
+    );
+  }, [filteredEvents]);
 
   // SECTION 6C: Inventory insights (last completed day)
   const inventoryInsights = useMemo(() => {
@@ -582,16 +837,67 @@ export default function AdminPage() {
       <div className="max-w-6xl mx-auto px-6 py-10">
         {/* Header */}
         <div className="mb-10 rounded-2xl border border-slate-200/70 bg-white/80 backdrop-blur px-6 py-5 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[10px] font-semibold tracking-[0.3em] text-slate-400">ELOWA OPERATIONS</p>
-              <h1 className="text-3xl font-semibold text-slate-900">Executive Dashboard</h1>
-              <p className="text-sm text-slate-500">Cash and mobile totals combined by day</p>
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-semibold tracking-[0.3em] text-slate-400">ELOWA OPERATIONS</p>
+                <h1 className="text-3xl font-semibold text-slate-900">Executive Dashboard</h1>
+                <p className="text-sm text-slate-500">Cash and mobile totals combined by day</p>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-xs text-slate-400">Last close</p>
+                <p className="text-sm font-semibold text-slate-900">{lastCompletedDateFormatted || 'No date'}</p>
+              </div>
             </div>
-            <div className="text-left sm:text-right">
-              <p className="text-xs text-slate-400">Last close</p>
-              <p className="text-sm font-semibold text-slate-900">{lastCompletedDateFormatted || 'No date'}</p>
-            </div>
+
+            {headerDepotSummary && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">LAST COMPLETED DAY</p>
+                    <p className="text-sm text-slate-500">{lastCompletedDateFormatted || 'No date available'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="uppercase tracking-[0.2em] text-slate-400">Depot</span>
+                    <select
+                      value={selectedLastCloseDepot || headerDepotSummary.depotId}
+                      onChange={(event) => setSelectedLastCloseDepot(event.target.value)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+                    >
+                      {lastDayDepotSummaries.map(summary => (
+                        <option key={summary.depotId} value={summary.depotId}>
+                          {summary.depotId}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  {renderDepotSummaryContent(headerDepotSummary)}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                  <span>Last close total: {lastCloseTotal.toLocaleString()} CFA</span>
+                  <button
+                    onClick={() => setShowLastCloseSplit(value => !value)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    {showLastCloseSplit ? 'Hide depot split' : 'View depot split'}
+                  </button>
+                </div>
+
+                {showLastCloseSplit && (
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {lastDayDepotSummaries.map(summary => (
+                      <div key={summary.depotId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        {renderDepotSummaryContent(summary)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -608,9 +914,12 @@ export default function AdminPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Total sales (last 5 days)</p>
+                  <p className="text-xs text-slate-500">Last full week total (Sun-Sat)</p>
                   <p className="text-3xl font-semibold text-slate-900">
-                    {lastFiveDayTrends.total.toLocaleString()} CFA
+                    {lastFullWeekSummary.totalSales.toLocaleString()} CFA
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {formatShortDate(lastFullWeekSummary.start)} - {formatShortDate(lastFullWeekSummary.end)}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-xs text-slate-500">
@@ -634,7 +943,7 @@ export default function AdminPage() {
                     )}
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Low day</p>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Worst day</p>
                     <p className="text-sm font-semibold text-slate-900">
                       {lastFiveDayTrends.worst
                         ? new Date(lastFiveDayTrends.worst.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -647,19 +956,18 @@ export default function AdminPage() {
                     )}
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Last close</p>
-                    <p className="text-sm font-semibold text-slate-900">{lastCompletedDateFormatted || '—'}</p>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Last close total</p>
+                    <p className="text-sm font-semibold text-slate-900">{lastCloseTotal.toLocaleString()} CFA</p>
                   </div>
                 </div>
               </div>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="text-xs text-slate-500 mb-3">Total sales (last close)</p>
-              <p className="text-3xl font-semibold text-slate-900">{daySummary.totalSales.toLocaleString()} CFA</p>
-              <div className="mt-4 text-xs text-slate-500">
-                <p>{daySummary.closedCount} / {daySummary.totalDepots} depots closed</p>
-                <p>{daySummary.cashIssues === 0 ? 'No cash review flags' : `${daySummary.cashIssues} review flag${daySummary.cashIssues > 1 ? 's' : ''}`}</p>
-              </div>
+              {headerDepotSummary ? (
+                renderDepotSummaryContent(headerDepotSummary)
+              ) : (
+                <p className="text-sm text-slate-500">No last close summary available.</p>
+              )}
             </div>
           </div>
           <div className="mt-5 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
@@ -720,79 +1028,6 @@ export default function AdminPage() {
                 )}
               </tbody>
             </table>
-          </div>
-        </section>
-
-        {/* SECTION 1: LAST COMPLETED BUSINESS DAY */}
-        <section className="mb-12">
-          <div className="flex items-end justify-between mb-4">
-            <div>
-              <h2 className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">LAST COMPLETED DAY</h2>
-              <p className="text-sm text-slate-500">{lastCompletedDateFormatted || 'No date available'}</p>
-            </div>
-            <div className="text-xs text-slate-400">Per-depot close status</div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {lastDayDepotSummaries.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 text-sm text-slate-500">
-                No data available
-              </div>
-            ) : (
-              lastDayDepotSummaries.map((summary, idx) => (
-                <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-900">{summary.depotId}</h3>
-                      <p className="text-xs text-slate-500 uppercase tracking-[0.3em]">
-                        Business day close
-                      </p>
-                    </div>
-                    <EventBadge type={summary.closingStatus as 'OPEN' | 'CLOSED'} />
-                  </div>
-                  {summary.closingStatus === 'CLOSED' ? (
-                    <div className="space-y-4">
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <p className="text-xs text-slate-500">Recorded Sales</p>
-                          <p className="text-2xl font-semibold text-slate-900">
-                            {summary.recordedSales.toLocaleString()} CFA
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
-                          <p className="text-xs text-slate-500">Cash review</p>
-                          <p className={`text-sm font-semibold ${summary.cashReviewTone === 'emerald' ? 'text-emerald-600' : summary.cashReviewTone === 'amber' ? 'text-amber-600' : 'text-slate-400'}`}>
-                            {summary.cashReviewLabel}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-3 text-sm text-slate-600">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Operator</p>
-                          <p className="font-semibold text-slate-900">{summary.operator}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Opening cash</p>
-                          <p className="font-semibold text-slate-900">{summary.openingCash.toLocaleString()} CFA</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Closing cash</p>
-                          <p className="font-semibold text-slate-900">{summary.closingCash.toLocaleString()} CFA</p>
-                        </div>
-                      </div>
-
-                      {summary.varianceNote && (
-                        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                          {summary.varianceNote}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-400">Awaiting closure</p>
-                  )}
-                </div>
-              ))
-            )}
           </div>
         </section>
 
@@ -966,18 +1201,12 @@ export default function AdminPage() {
           <div className="flex items-end justify-between mb-4">
             <div>
               <h2 className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">RECORDED SALES HISTORY</h2>
-              <p className="text-sm text-slate-500">Closed days only, cash + mobile</p>
+              <p className="text-sm text-slate-500">Last 14 closed days, cash + mobile</p>
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={salesHistoryChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
+              <BarChart data={salesHistoryChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <XAxis
                   dataKey="date"
                   axisLine={false}
@@ -995,50 +1224,196 @@ export default function AdminPage() {
                   contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '600' }}
                   formatter={(v: number | undefined) => [(v || 0).toLocaleString() + ' CFA', 'Sales']}
                 />
-                <Area
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  fill="url(#salesGradient)"
-                />
-              </AreaChart>
+                <Bar dataKey="sales" fill="#2563eb" radius={[6, 6, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </section>
 
-        {/* SECTION 5B: ACTIVITY LOG */}
+        {/* SECTION 5B: DEPOT EVENT STREAM */}
         <section className="mb-12">
           <div className="flex items-end justify-between mb-4">
             <div>
-              <h2 className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">ACTIVITY LOG</h2>
-              <p className="text-sm text-slate-500">Recent business days and review flags</p>
+              <h2 className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">DEPOT EVENT STREAM</h2>
+              <p className="text-sm text-slate-500">Open, close, and not-opened events with drilldowns</p>
+            </div>
+            <p className="text-xs text-slate-400">{filteredEvents.length} events</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mb-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Depot</label>
+                <select
+                  value={filterDepot}
+                  onChange={(event) => setFilterDepot(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="All">All depots</option>
+                  {depotOptions.map(depot => (
+                    <option key={depot} value={depot}>
+                      {depot}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Operator</label>
+                <select
+                  value={filterOperator}
+                  onChange={(event) => setFilterOperator(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="All">All operators</option>
+                  {operatorOptions.map(operator => (
+                    <option key={operator} value={operator}>
+                      {operator}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Time range</label>
+                <select
+                  value={filterRange}
+                  onChange={(event) => setFilterRange(event.target.value as '7d' | '30d' | '90d' | 'all')}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="90d">Last 90 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Sort</label>
+                <select
+                  value={sortOrder}
+                  onChange={(event) => setSortOrder(event.target.value as 'newest' | 'oldest')}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-500">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Open: {eventStatusCounts.OPEN}</span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Closed: {eventStatusCounts.CLOSE}</span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Not opened: {eventStatusCounts.NOT_OPENED}</span>
             </div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-sm">
-            {activityLog.length === 0 ? (
-              <div className="p-6">
-                <p className="text-sm text-slate-500">No activity yet</p>
+
+          <div className="space-y-3">
+            {filteredEvents.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                No events match the current filters.
               </div>
             ) : (
-              activityLog.map((item, idx) => (
-                <div key={idx} className="p-4 flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{item.status}</p>
-                    <p className="text-xs text-slate-500 mt-1">{item.detail}</p>
+              filteredEvents.map(event => {
+                const isExpanded = expandedEventId === event.id;
+                const eventTime = event.timestamp
+                  ? event.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                  : null;
+                const badgeClasses = event.type === 'OPEN'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : event.type === 'CLOSE'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-amber-100 text-amber-700';
+                const inventoryEntries = event.inventory
+                  ? INVENTORY_ORDER.filter(key => event.inventory && event.inventory[key] !== undefined).map(key => ({
+                      key,
+                      value: event.inventory ? event.inventory[key] : ''
+                    }))
+                  : [];
+
+                return (
+                  <div key={event.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-semibold tracking-[0.3em] text-slate-400">{event.type.replace('_', ' ')}</p>
+                        <p className="text-lg font-semibold text-slate-900">{event.depotId}</p>
+                        <p className="text-xs text-slate-500">
+                          {formatShortDate(event.businessDate)}
+                          {eventTime ? ` · ${eventTime}` : ''}
+                        </p>
+                      </div>
+                      <span className={`text-[10px] font-semibold px-3 py-1 rounded-full ${badgeClasses}`}>
+                        {event.type === 'OPEN' ? 'OPEN' : event.type === 'CLOSE' ? 'CLOSED' : 'NOT OPENED'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                        Operator: {event.operator || 'Unassigned'}
+                      </span>
+                      {event.sales !== undefined && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                          Sales: {event.sales.toLocaleString()} CFA
+                        </span>
+                      )}
+                      {event.cashReviewLabel && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                          Cash review: {event.cashReviewLabel}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setExpandedEventId(isExpanded ? null : event.id)}
+                      className="mt-3 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                    >
+                      {isExpanded ? 'Hide details' : 'View details'}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-3 text-sm text-slate-600">
+                          {event.openingCash !== undefined && (
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Opening cash</p>
+                              <p className="font-semibold text-slate-900">{event.openingCash.toLocaleString()} CFA</p>
+                            </div>
+                          )}
+                          {event.closingCash !== undefined && (
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Closing cash</p>
+                              <p className="font-semibold text-slate-900">{event.closingCash.toLocaleString()} CFA</p>
+                            </div>
+                          )}
+                          {event.sales !== undefined && (
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Recorded sales</p>
+                              <p className="font-semibold text-slate-900">{event.sales.toLocaleString()} CFA</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {inventoryEntries.length > 0 && (
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs text-slate-500 mb-2">Inventory snapshot</p>
+                            <div className="grid gap-2 sm:grid-cols-2 text-xs text-slate-600">
+                              {inventoryEntries.map(entry => (
+                                <div key={entry.key} className="flex items-center justify-between border-b border-slate-200 py-1">
+                                  <span>{INVENTORY_LABELS[entry.key] || entry.key}</span>
+                                  <span className="font-semibold text-slate-900">{entry.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {event.varianceNote && (
+                          <div className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                            {event.varianceNote}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-slate-500">
-                      {new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </p>
-                    <span className={`inline-flex mt-1 text-xs font-bold px-2 py-0.5 rounded-full ${
-                      item.tone === 'warn' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {item.status}
-                    </span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
