@@ -1,6 +1,6 @@
 "use client";
 import { createClient } from "./lib/supabase";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 /* =====================
    CONSTANTS & TYPES
@@ -182,10 +182,9 @@ const InventoryInputs: React.FC<{
 ===================== */
 
 export default function Page() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [lang, setLang] = useState<Lang>("EN");
   const [screen, setScreen] = useState<Screen>("login");
-  const [loading, setLoading] = useState(false);
 
   const [depotStates, setDepotStates] = useState<Record<Depot, DepotDayState | null>>({
     Benardkope: null,
@@ -233,7 +232,7 @@ export default function Page() {
     };
 
     loadAllDepotStates();
-  }, [businessDate]);
+  }, [businessDate, supabase]);
 
   const loadDepotOpenData = async (selectedDepot: Depot) => {
     const { data } = await supabase
@@ -388,8 +387,6 @@ export default function Page() {
             <OpenForm
               lang={lang}
               onSubmit={async (data) => {
-                setLoading(true);
-
                 const { error } = await supabase.from("depot_day_open").insert({
                   depot_id: depot,
                   operator_name: operator,
@@ -397,8 +394,6 @@ export default function Page() {
                   opening_cash_cfa: Number(data.cash),
                   opening_inventory: data.inventory,
                 });
-
-                setLoading(false);
 
                 if (error) {
                   if (error.code === "23505") {
@@ -444,8 +439,6 @@ export default function Page() {
             <CloseForm
               lang={lang}
               onSubmit={async (data) => {
-                setLoading(true);
-
                 const { error } = await supabase.from("depot_day_close").insert({
                   depot_id: depot,
                   operator_name: operator,
@@ -456,8 +449,6 @@ export default function Page() {
                   closing_inventory: data.inventory,
                   variance_note: data.varianceNote || null,
                 });
-
-                setLoading(false);
 
                 if (error) {
                   if (error.code === "23505") {
