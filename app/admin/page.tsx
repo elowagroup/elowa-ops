@@ -76,6 +76,23 @@ type DepotEvent = {
   inventory?: Record<string, string> | null;
 };
 
+type DepotStatus = 'OPEN' | 'CLOSED' | 'NOT_OPENED';
+
+type CurrentStatusCard = {
+  depotId: string;
+  status: DepotStatus;
+  operator: string | null;
+  openedAt: Date | null;
+  closedAt: Date | null;
+  openingCash: number;
+  closingCash: number;
+  sales: number;
+  cashReviewLabel: string | null;
+  varianceNote?: string;
+  openingInventory: Record<string, string> | null;
+  closingInventory: Record<string, string> | null;
+};
+
 function convertSupabaseData(
   supabaseData: DepotDayStateRow[],
   closeMap: Map<string, DepotDayCloseRow>
@@ -103,7 +120,8 @@ function convertSupabaseData(
 const CASH_REVIEW_TOLERANCE_PCT = 5;
 
 const getTotalSales = (d: DepotDayEvent) => d.cash_sales_cfa + d.mobile_sales_cfa;
-const getExpectedCash = (d: DepotDayEvent) => d.cash_sales_cfa - d.restock_cash_used;
+const getExpectedCash = (d: DepotDayEvent) =>
+  d.opening_cash_cfa + d.cash_sales_cfa - d.restock_cash_used;
 const getCashReview = (d: DepotDayEvent) => {
   const expected = getExpectedCash(d);
   const actual = d.closing_cash_physical;
@@ -142,6 +160,11 @@ const formatShortDate = (value: string | Date) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+const formatShortTime = (value: Date | null) =>
+  value
+    ? value.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : '—';
+
 export default function AdminPage() {
   const [data, setData] = useState<DepotDayEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,6 +184,7 @@ export default function AdminPage() {
   const [filterRange, setFilterRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [expandedStatusDepot, setExpandedStatusDepot] = useState<string | null>(null);
   const rowsPerPage = 8;
 
   useEffect(() => {
@@ -350,6 +374,9 @@ export default function AdminPage() {
               <p className="text-xs text-slate-500">Cash review</p>
               <p className={`text-sm font-semibold ${summary.cashReviewTone === 'emerald' ? 'text-emerald-600' : summary.cashReviewTone === 'amber' ? 'text-amber-600' : 'text-slate-400'}`}>
                 {summary.cashReviewLabel}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Closing cash vs opening cash + cash sales (mobile excluded)
               </p>
             </div>
           </div>
@@ -597,6 +624,68 @@ export default function AdminPage() {
       days: weekRecords.length
     };
   }, [allDailyRecords]);
+
+  const currentWeekSummary = useMemo(() => {
+    const now = new Date();
+    const currentWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
+
+    const weekRecords = allDailyRecords.filter(record => {
+      const date = new Date(record.date);
+      return date >= currentWeekStart && date <= currentWeekEnd;
+    });
+
+    return {
+      totalSales: weekRecords.reduce((sum, record) => sum + record.sales, 0),
+      start: currentWeekStart,
+      end: currentWeekEnd,
+      days: weekRecords.length
+    };
+  }, [allDailyRecords]);
+
+  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const currentStatusCards = useMemo<CurrentStatusCard[]>(() => {
+    return depotOptions.map(depotId => {
+      const record = data.find(item => item.depot_id === depotId && item.business_date === todayKey);
+      const key = `${depotId}__${todayKey}`;
+      const openMeta = openMetaMap[key];
+      const closeMeta = closeMetaMap[key];
+      const status: DepotStatus = record?.operator_close
+        ? 'CLOSED'
+        : record?.operator_open
+        ? 'OPEN'
+        : 'NOT_OPENED';
+
+      const cashReview = record && record.operator_close ? getCashReview(record) : null;
+
+      return {
+        depotId,
+        status,
+        operator: record?.operator_close ?? record?.operator_open ?? openMeta?.operator ?? closeMeta?.operator ?? null,
+        openedAt: openMeta?.openedAt ?? null,
+        closedAt: closeMeta?.closedAt ?? null,
+        openingCash: record?.opening_cash_cfa ?? 0,
+        closingCash: record?.closing_cash_physical ?? 0,
+        sales: record ? getTotalSales(record) : 0,
+        cashReviewLabel: cashReview ? (cashReview.needsReview ? 'REQUIRES REVIEW' : 'BALANCED') : null,
+        varianceNote: record?.variance_note,
+        openingInventory: inventoryMaps.open[key] ?? null,
+        closingInventory: inventoryMaps.close[key] ?? null
+      };
+    });
+  }, [data, depotOptions, openMetaMap, closeMetaMap, inventoryMaps, todayKey]);
+
+  const currentStatusCounts = useMemo(() => {
+    return currentStatusCards.reduce(
+      (acc, card) => {
+        acc[card.status] += 1;
+        return acc;
+      },
+      { OPEN: 0, CLOSED: 0, NOT_OPENED: 0 } as Record<DepotStatus, number>
+    );
+  }, [currentStatusCards]);
 
   const activityEvents = useMemo<DepotEvent[]>(() => {
     const events: DepotEvent[] = [];
@@ -901,76 +990,73 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* SECTION 0: ALL DEPOTS SALES PULSE */}
+        {/* SECTION 0: WEEKLY PULSE */}
         <section className="mb-12">
           <div className="flex items-end justify-between mb-4">
             <div>
-              <h2 className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">ALL DEPOTS SALES PULSE</h2>
-              <p className="text-sm text-slate-500">Last 5 business days (closed depots only)</p>
+              <h2 className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">WEEKLY PULSE</h2>
+              <p className="text-sm text-slate-500">This week, last week, and recent sales momentum</p>
             </div>
-            <p className="text-xs text-slate-400">Auto-aggregated</p>
+            <p className="text-xs text-slate-400">Sun-Sat summaries</p>
           </div>
-          <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs text-slate-500">Last full week total (Sun-Sat)</p>
-                  <p className="text-3xl font-semibold text-slate-900">
-                    {lastFullWeekSummary.totalSales.toLocaleString()} CFA
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {formatShortDate(lastFullWeekSummary.start)} - {formatShortDate(lastFullWeekSummary.end)}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-xs text-slate-500">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">5 day avg</p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {Math.round(lastFiveDayTrends.avg).toLocaleString()} CFA
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Best day</p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {lastFiveDayTrends.best
-                        ? new Date(lastFiveDayTrends.best.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                        : '—'}
-                    </p>
-                    {lastFiveDayTrends.best && (
-                      <p className="text-xs text-slate-500">
-                        {lastFiveDayTrends.best.sales.toLocaleString()} CFA
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Worst day</p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {lastFiveDayTrends.worst
-                        ? new Date(lastFiveDayTrends.worst.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                        : '—'}
-                    </p>
-                    {lastFiveDayTrends.worst && (
-                      <p className="text-xs text-slate-500">
-                        {lastFiveDayTrends.worst.sales.toLocaleString()} CFA
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Last close total</p>
-                    <p className="text-sm font-semibold text-slate-900">{lastCloseTotal.toLocaleString()} CFA</p>
-                  </div>
-                </div>
-              </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl bg-slate-950 text-white p-6 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">This week</p>
+              <p className="text-3xl font-semibold mt-2">{currentWeekSummary.totalSales.toLocaleString()} CFA</p>
+              <p className="text-xs text-slate-400 mt-2">
+                {formatShortDate(currentWeekSummary.start)} - {formatShortDate(currentWeekSummary.end)}
+              </p>
             </div>
+
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              {headerDepotSummary ? (
-                renderDepotSummaryContent(headerDepotSummary)
-              ) : (
-                <p className="text-sm text-slate-500">No last close summary available.</p>
+              <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Last week</p>
+              <p className="text-2xl font-semibold text-slate-900 mt-2">{lastFullWeekSummary.totalSales.toLocaleString()} CFA</p>
+              <p className="text-xs text-slate-500 mt-2">
+                {formatShortDate(lastFullWeekSummary.start)} - {formatShortDate(lastFullWeekSummary.end)}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">5 day avg</p>
+              <p className="text-2xl font-semibold text-slate-900 mt-2">
+                {Math.round(lastFiveDayTrends.avg).toLocaleString()} CFA
+              </p>
+              <p className="text-xs text-slate-500 mt-2">Based on last 5 closed days</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Best day</p>
+              <p className="text-lg font-semibold text-slate-900 mt-2">
+                {lastFiveDayTrends.best
+                  ? new Date(lastFiveDayTrends.best.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  : '—'}
+              </p>
+              {lastFiveDayTrends.best && (
+                <p className="text-xs text-slate-500 mt-1">{lastFiveDayTrends.best.sales.toLocaleString()} CFA</p>
               )}
             </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Worst day</p>
+              <p className="text-lg font-semibold text-slate-900 mt-2">
+                {lastFiveDayTrends.worst
+                  ? new Date(lastFiveDayTrends.worst.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  : '—'}
+              </p>
+              {lastFiveDayTrends.worst && (
+                <p className="text-xs text-slate-500 mt-1">{lastFiveDayTrends.worst.sales.toLocaleString()} CFA</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Last close total</p>
+              <p className="text-2xl font-semibold text-slate-900 mt-2">{lastCloseTotal.toLocaleString()} CFA</p>
+              <p className="text-xs text-slate-500 mt-2">Last completed business day</p>
+            </div>
           </div>
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
@@ -1031,6 +1117,137 @@ export default function AdminPage() {
           </div>
         </section>
 
+        {/* SECTION 1: CURRENT OPERATIONS */}
+        <section className="mb-12">
+          <div className="flex items-end justify-between mb-4">
+            <div>
+              <h2 className="text-[11px] font-semibold tracking-[0.25em] text-slate-500">CURRENT OPERATIONS</h2>
+              <p className="text-sm text-slate-500">Status snapshot for {formatShortDate(todayKey)}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Open: {currentStatusCounts.OPEN}</span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Closed: {currentStatusCounts.CLOSED}</span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Not opened: {currentStatusCounts.NOT_OPENED}</span>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {currentStatusCards.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                No current status data yet.
+              </div>
+            ) : (
+              currentStatusCards.map(card => {
+                const isExpanded = expandedStatusDepot === card.depotId;
+                const statusClasses = card.status === 'OPEN'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : card.status === 'CLOSED'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-slate-100 text-slate-500';
+                const inventoryEntries = card.status === 'CLOSED'
+                  ? card.closingInventory
+                    ? INVENTORY_ORDER.filter(key => card.closingInventory && card.closingInventory[key] !== undefined).map(key => ({
+                        key,
+                        value: card.closingInventory ? card.closingInventory[key] : ''
+                      }))
+                    : []
+                  : card.openingInventory
+                  ? INVENTORY_ORDER.filter(key => card.openingInventory && card.openingInventory[key] !== undefined).map(key => ({
+                      key,
+                      value: card.openingInventory ? card.openingInventory[key] : ''
+                    }))
+                  : [];
+
+                return (
+                  <div key={card.depotId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Current status</p>
+                        <h3 className="text-lg font-semibold text-slate-900">{card.depotId}</h3>
+                        <p className="text-xs text-slate-500">Operator: {card.operator || 'Unassigned'}</p>
+                      </div>
+                      <span className={`text-[10px] font-semibold px-3 py-1 rounded-full ${statusClasses}`}>
+                        {card.status === 'NOT_OPENED' ? 'NOT OPENED' : card.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 text-xs text-slate-500 sm:grid-cols-2">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Opened at</p>
+                        <p className="text-sm font-semibold text-slate-900">{formatShortTime(card.openedAt)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Closed at</p>
+                        <p className="text-sm font-semibold text-slate-900">{formatShortTime(card.closedAt)}</p>
+                      </div>
+                    </div>
+
+                    {card.status !== 'NOT_OPENED' && (
+                      <button
+                        onClick={() => setExpandedStatusDepot(isExpanded ? null : card.depotId)}
+                        className="mt-3 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                      >
+                        {isExpanded ? 'Hide details' : 'View details'}
+                      </button>
+                    )}
+
+                    {isExpanded && (
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-3 text-sm text-slate-600">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Opening cash</p>
+                            <p className="font-semibold text-slate-900">{card.openingCash.toLocaleString()} CFA</p>
+                          </div>
+                          {card.status === 'CLOSED' && (
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Closing cash</p>
+                              <p className="font-semibold text-slate-900">{card.closingCash.toLocaleString()} CFA</p>
+                            </div>
+                          )}
+                          {card.status === 'CLOSED' && (
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Recorded sales</p>
+                              <p className="font-semibold text-slate-900">{card.sales.toLocaleString()} CFA</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {card.cashReviewLabel && (
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                            Cash review: <span className="font-semibold text-slate-900">{card.cashReviewLabel}</span>
+                          </div>
+                        )}
+
+                        {inventoryEntries.length > 0 && (
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs text-slate-500 mb-2">
+                              {card.status === 'CLOSED' ? 'Closing inventory' : 'Opening inventory'}
+                            </p>
+                            <div className="grid gap-2 sm:grid-cols-2 text-xs text-slate-600">
+                              {inventoryEntries.map(entry => (
+                                <div key={entry.key} className="flex items-center justify-between border-b border-slate-200 py-1">
+                                  <span>{INVENTORY_LABELS[entry.key] || entry.key}</span>
+                                  <span className="font-semibold text-slate-900">{entry.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {card.varianceNote && (
+                          <div className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                            {card.varianceNote}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+
         {/* SECTION 2: DAY SUMMARY */}
         <section className="mb-12">
           <div className="rounded-2xl bg-slate-950 text-white p-6 shadow-sm">
@@ -1052,6 +1269,9 @@ export default function AdminPage() {
                 <p className="text-3xl font-semibold">{daySummary.cashIssues === 0 ? 'None' : `${daySummary.cashIssues} depot${daySummary.cashIssues > 1 ? 's' : ''}`}</p>
               </div>
             </div>
+            <p className="text-xs text-slate-400 mt-4">
+              Cash review compares closing cash vs opening cash + cash sales (mobile excluded).
+            </p>
           </div>
         </section>
 
@@ -1321,6 +1541,11 @@ export default function AdminPage() {
                   : event.type === 'CLOSE'
                   ? 'bg-blue-100 text-blue-700'
                   : 'bg-amber-100 text-amber-700';
+                const eventBorder = event.type === 'OPEN'
+                  ? 'border-emerald-200'
+                  : event.type === 'CLOSE'
+                  ? 'border-blue-200'
+                  : 'border-amber-200';
                 const inventoryEntries = event.inventory
                   ? INVENTORY_ORDER.filter(key => event.inventory && event.inventory[key] !== undefined).map(key => ({
                       key,
@@ -1329,7 +1554,7 @@ export default function AdminPage() {
                   : [];
 
                 return (
-                  <div key={event.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div key={event.id} className={`rounded-2xl border border-l-4 bg-white/90 p-4 shadow-sm ${eventBorder}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-[11px] font-semibold tracking-[0.3em] text-slate-400">{event.type.replace('_', ' ')}</p>
