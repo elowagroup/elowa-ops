@@ -17,9 +17,12 @@ type Screen = "login" | "open" | "status" | "close" | "final";
 type DepotDayState = "NOT_OPENED" | "OPENED" | "CLOSED";
 
 type Inventory = {
-  riceWhite: string;
-  riceBrown: string;
-  ricePerfumed: string;
+  riceWhite50kg: string;
+  riceWhite25kg: string;
+  riceBrown50kg: string;
+  riceBrown25kg: string;
+  ricePerfumed25kg: string;
+  ricePerfumed5kg: string;
   oil25: string;
   oil5: string;
   oil1: string;
@@ -52,9 +55,12 @@ function parsePgTimestamp(ts?: string | null): Date | null {
 }
 
 const DEFAULT_INVENTORY = (): Inventory => ({
-  riceWhite: "",
-  riceBrown: "",
-  ricePerfumed: "",
+  riceWhite50kg: "",
+  riceWhite25kg: "",
+  riceBrown50kg: "",
+  riceBrown25kg: "",
+  ricePerfumed25kg: "",
+  ricePerfumed5kg: "",
   oil25: "",
   oil5: "",
   oil1: "",
@@ -156,9 +162,12 @@ const InventoryInputs: React.FC<{
   setInventory: (i: Inventory) => void;
 }> = ({ inventory, setInventory }) => {
   const keys = [
-    "riceWhite",
-    "riceBrown",
-    "ricePerfumed",
+    "riceWhite50kg",
+    "riceWhite25kg",
+    "riceBrown50kg",
+    "riceBrown25kg",
+    "ricePerfumed25kg",
+    "ricePerfumed5kg",
     "oil25",
     "oil5",
     "oil1",
@@ -607,9 +616,12 @@ const CloseForm: React.FC<{
   const restockCandidates = useMemo(() => {
     const candidates: { key: keyof Inventory; open: string; close: string }[] = [];
     const numericKeys = [
-      "riceWhite",
-      "riceBrown",
-      "ricePerfumed",
+      "riceWhite50kg",
+      "riceWhite25kg",
+      "riceBrown50kg",
+      "riceBrown25kg",
+      "ricePerfumed25kg",
+      "ricePerfumed5kg",
       "oil25",
       "oil5",
       "oil1",

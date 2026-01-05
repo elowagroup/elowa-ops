@@ -149,9 +149,12 @@ const getCashReview = (d: DepotDayEvent) => {
 };
 
 const INVENTORY_LABELS: Record<string, string> = {
-  riceWhite: 'Rice White',
-  riceBrown: 'Rice Brown',
-  ricePerfumed: 'Rice Perfumed',
+  riceWhite50kg: 'Rice White 50kg',
+  riceWhite25kg: 'Rice White 25kg',
+  riceBrown50kg: 'Rice Brown 50kg',
+  riceBrown25kg: 'Rice Brown 25kg',
+  ricePerfumed25kg: 'Rice Perfumed 25kg',
+  ricePerfumed5kg: 'Rice Perfumed 5kg',
   oil25: 'Oil 25L',
   oil5: 'Oil 5L',
   oil1: 'Oil 1L',

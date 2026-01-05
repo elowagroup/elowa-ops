@@ -2,7 +2,18 @@ import { DepotDayEvent, InventoryStatus, InventoryItem } from './types';
 
 const depots = ['Adetikope', 'Benardkope'];
 const operators = ['Mohamed', 'Mona', 'Sarata'];
-const skus = ['Rice-White', 'Rice-Brown', 'Rice-Perfumed', 'Oil-25L', 'Oil-5L', 'Oil-1L', 'Spaghetti'];
+const skus = [
+  'Rice-White-50kg',
+  'Rice-White-25kg',
+  'Rice-Brown-50kg',
+  'Rice-Brown-25kg',
+  'Rice-Perfumed-25kg',
+  'Rice-Perfumed-5kg',
+  'Oil-25L',
+  'Oil-5L',
+  'Oil-1L',
+  'Spaghetti'
+];
 
 const randomStatus = (): InventoryStatus => {
   const rand = Math.random();
