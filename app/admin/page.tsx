@@ -123,8 +123,48 @@ export default function AdminPage() {
     if (!rawData) return null;
 
     const today = new Date().toISOString().slice(0, 10);
-    const latestDate = rawData.state[0]?.business_date || today;
-    const latestDepots = rawData.state.filter((d: any) => d.business_date === latestDate);
+
+    // CRITICAL FIX: Merge data from all three sources for today's view
+    // depot_day_open - Real-time openings
+    // depot_day_close - Real-time closings
+    // depot_day_state - Historical completed days (may not have today yet)
+
+    const todayOpens = rawData.open.filter((o: any) => o.business_date === today);
+    const todayCloses = rawData.close.filter((c: any) => c.business_date === today);
+    const todayState = rawData.state.filter((s: any) => s.business_date === today);
+
+    // Get all depot IDs (including known depots that might not have records yet)
+    const knownDepots = ['Benardkope', 'Adetikope'];
+    const allDepotIds = new Set([
+      ...todayOpens.map((o: any) => o.depot_id),
+      ...todayCloses.map((c: any) => c.depot_id),
+      ...todayState.map((s: any) => s.depot_id),
+      ...knownDepots
+    ]);
+
+    // Build unified depot records for today
+    const latestDepots: any[] = [];
+
+    allDepotIds.forEach(depotId => {
+      const openData = todayOpens.find((o: any) => o.depot_id === depotId);
+      const closeData = todayCloses.find((c: any) => c.depot_id === depotId);
+      const stateData = todayState.find((s: any) => s.depot_id === depotId);
+
+      // Merge data from all sources (priority: closeData > stateData > openData)
+      latestDepots.push({
+        depot_id: depotId,
+        business_date: today,
+        operator_open: openData?.operator_name || stateData?.operator_open || null,
+        operator_close: closeData?.operator_name || stateData?.operator_close || null,
+        opening_cash_cfa: openData?.opening_cash_cfa || stateData?.opening_cash_cfa || 0,
+        cash_sales_total_cfa: closeData?.cash_sales_total_cfa || stateData?.cash_sales_total_cfa || 0,
+        mobile_sales_total_cfa: closeData?.mobile_sales_total_cfa || stateData?.mobile_sales_total_cfa || 0,
+        closing_cash_cfa: closeData?.closing_cash_cfa || stateData?.closing_cash_cfa || 0,
+        restock_cash_used: closeData?.restock_cash_used || 0,
+      });
+    });
+
+    const latestDate = today;
 
     // Helper: Get cash review (5% tolerance)
     const getCashReview = (depot: any) => {
